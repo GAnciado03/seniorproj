@@ -1,13 +1,15 @@
 package videoapp;
 
 import videoapp.ui.VideoPlayerFrame;
-import videoapp.util.OpenCvHelpers;
+import nu.pattern.OpenCV;
 
 import javax.swing.*;
 
 public class Driver{
-    public static void main(String[] args) {
-        OpenCvHelpers.load();
+    public static void main(String[] args) throws Exception{
+        OpenCV.loadLocally();
+        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+
         SwingUtilities.invokeLater(() -> new VideoPlayerFrame().setVisible(true));
     }
 }

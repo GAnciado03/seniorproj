@@ -4,6 +4,7 @@ import videoapp.core.VideoPlayer;
 
 import javax.swing.*;
 import java.io.File;
+import static java.lang.System.getProperty;
 
 public class VideoChooseHandler {
     private final JFrame parentFrame;
@@ -17,6 +18,10 @@ public class VideoChooseHandler {
     public void chooseToPlay() {
         JFileChooser chooser = new JFileChooser();
         chooser. setDialogTitle("Choose a video file.");
+        File videos = new File(getProperty("user.home"), "Videos");
+        if(videos.isDirectory()) {
+            chooser.setCurrentDirectory(videos);
+        }
         int result = chooser.showOpenDialog(parentFrame);
         if(result == JFileChooser.APPROVE_OPTION){
             File file = chooser.getSelectedFile();

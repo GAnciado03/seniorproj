@@ -1,5 +1,5 @@
 package videoapp.core;
 
 public interface ProgressListener {
-    void onProgress(long posMs, long duractionMs);
+    void onProgress(long posMs, long durationMs);
 }

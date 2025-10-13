@@ -35,24 +35,6 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
 
     @Override
     public void renderFrame(BufferedImage img) {
-        if(packNext) {
-            packNext = false;
-            SwingUtilities.invokeLater(() -> {
-                GraphicsConfiguration gc = getGraphicsConfiguration();
-                if (gc != null) {
-                    var tx = gc.getDefaultTransform();
-                    scaleX = tx.getScaleX();
-                    scaleY = tx.getScaleY();
-                }
-                int prefW = (int) Math.round(img.getWidth() / scaleX);
-                int prefH = (int) Math.round(img.getHeight() / scaleY);
-                setPreferredSize(new Dimension(prefW, prefH));
-                Window w = SwingUtilities.getWindowAncestor(this);
-                if(w != null) {
-                    w.pack();
-                }
-            });
-        }
         this.frame = img;
         repaint();
     }

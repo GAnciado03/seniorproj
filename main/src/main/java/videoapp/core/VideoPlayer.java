@@ -66,6 +66,12 @@ public class VideoPlayer {
         return paused;
     }
 
+    public synchronized void setTargetSize(int w, int h) {
+        config.targetWidth = Math.max(0, w);
+        config.targetHeight = Math.max(0, h);
+        renderer.requestPackOnNextFrame();
+    }
+
     public synchronized void seekMs(long ms) {
         if(thread != null) {
             thread.requestSeekMs(ms);
