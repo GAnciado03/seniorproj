@@ -1,27 +1,41 @@
 package videoapp.ui;
 
+/**
+ * Composite control with a play/pause button, a seek slider, and a time label.
+ * Uses fixed-size vector icons so toggling doesn't shift layout.
+ * Provides hooks for external play/pause action and seeking by fraction.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import java.awt.*;
 import java.util.function.Consumer;
 
 public class ProgressBar extends JPanel{
-    private final JButton play = new JButton("Play");
-    private final JButton stop = new JButton("Stop");
+    private final JButton play = new JButton();
     private final JSlider progress = new JSlider(0, 1000, 0);
     private final JLabel time = new JLabel("00:00 / 00:00");
     private boolean dragging = false;
 
     private Runnable onPlay;
-    private Runnable onStop;
     private Consumer<Integer> progressFraction;
+
+    private final Icon playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY);
+    private final Icon pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE);
 
     public ProgressBar() {
         super(new BorderLayout(12, 0));
 
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
+        play.setFocusable(false);
+        play.setMargin(new Insets(4, 8, 4, 8));
+        play.setText(null);
+        play.setIcon(playIcon);
+        play.setPreferredSize(new Dimension(36, 28));
         left.add(play);
-        left.add(stop);
 
         JPanel center = new JPanel(new BorderLayout(8, 0));
         center.add(progress, BorderLayout.CENTER);
@@ -49,19 +63,10 @@ public class ProgressBar extends JPanel{
             }
         });
 
-        stop.addActionListener(e -> {
-            if(onStop != null) {
-                onStop.run();
-            }
-        });
     }
 
     public void setOnPlay(Runnable r) {
         this.onPlay = r;
-    }
-
-    public void setOnStop(Runnable r) {
-        this.onStop = r;
     }
 
     public void setProgressFraction(Consumer<Integer> c) {
@@ -90,6 +95,6 @@ public class ProgressBar extends JPanel{
     }
 
     public void setPlayState(boolean p) {
-        play.setText(p ? "Pause" : "Play");
+        play.setIcon(p ? pauseIcon : playIcon);
     }
 }

@@ -1,5 +1,13 @@
 package videoapp.core;
 
+/**
+ * Container for subtitle cues providing lookup of the active cue
+ * at a given playback timestamp.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import java.util.ArrayList;
 import java.util.List;
 

@@ -1,5 +1,13 @@
 package videoapp.util;
 
+/**
+ * Parser for SubRip (.srt) subtitle files that produces a
+ * CaptionsTrack composed of CaptionCue entries.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import videoapp.core.CaptionCue;
 import videoapp.core.CaptionsTrack;
 

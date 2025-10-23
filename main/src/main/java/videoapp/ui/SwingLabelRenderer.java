@@ -1,5 +1,14 @@
 package videoapp.ui;
 
+/**
+ * Simple {@link videoapp.core.VideoRenderer} that renders frames onto a
+ * JLabel as an ImageIcon, and shows
+ * status messages for stopped/error states.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import videoapp.core.VideoRenderer;
 
 import javax.swing.*;

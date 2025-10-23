@@ -1,37 +1,61 @@
 package videoapp.ui;
 
-import videoapp.core.VideoPlayer;
+/**
+ * Context menu for runtime playback settings such as speed and effective
+ * resolution (via decode percentage) relative to the panel size.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
+import java.util.function.*;
 
 public class SettingsMenu extends JPopupMenu{
-    public SettingsMenu(VideoPlayer player, Runnable refreshUi) {
+    public SettingsMenu(DoubleConsumer onSpeed, IntConsumer onPercent,
+                        int panelWidthPx, int panelHeightPx) {
         JMenu speed = new JMenu("Playback speed");
-        speed.add(item("0.5x", () -> player.setSpeed(0.5), refreshUi));
-        speed.add(item("1.0x", () -> player.setSpeed(1.0), refreshUi));
-        speed.add(item("1.5x", () -> player.setSpeed(1.5), refreshUi));
-        speed.add(item("2.0x", () -> player.setSpeed(2.0), refreshUi));
+        speed.add(item("0.5x", () -> onSpeed.accept(0.5)));
+        speed.add(item("1.0x", () -> onSpeed.accept(1.0)));
+        speed.add(item("1.5x", () -> onSpeed.accept(1.5)));
+        speed.add(item("2.0x", () -> onSpeed.accept(2.0)));
         add(speed);
 
         JMenu res = new JMenu("Resolution");
-        res.add(item("Source (native)", () -> player.setTargetSize(0, 0), refreshUi));
-        res.add(item("1080p (1920x1080)", () -> player.setTargetSize(1920, 1080), refreshUi));
-        res.add(item("720p (1280x720)", () -> player.setTargetSize(1280, 720), refreshUi));
-        res.add(item("480p (854x480)", () -> player.setTargetSize(854, 480), refreshUi));
-        res.add(item("360p (640x360))", () -> player.setTargetSize(640, 360), refreshUi));
+        res.add(resItem("1920x1080", 1920, 1080, panelWidthPx, panelHeightPx, onPercent));
+        res.add(resItem("1280x720", 1280, 720, panelWidthPx, panelHeightPx, onPercent));
+        res.add(resItem("854x480", 854, 480, panelWidthPx, panelHeightPx, onPercent));
+        res.add(resItem("640x360", 640, 360, panelWidthPx, panelHeightPx, onPercent));
         add(res);
     }
 
-    private JMenuItem item(String label, Runnable apply, Runnable refresh) {
+    private JMenuItem item(String label, Runnable action, Runnable after) {
         return new JMenuItem(new AbstractAction(label){
             @Override
             public void actionPerformed(ActionEvent e) {
-                apply.run();
-                if(refresh != null) {
-                    refresh.run();
-                }
+                if(action != null) action.run();
+                if(after != null) after.run();
             }
         });
+    }
+
+    private JMenuItem item(String label, Runnable action) {
+        return item(label, action, null);
+    }
+
+    private JMenuItem resItem(String label, int targetW, int targetH,
+                        int panelW, int panelH, IntConsumer onPercent) {
+        return item(label, () -> {
+            if (panelW <= 0 || panelH <= 0) return;
+            double pctW = (targetW / (double) panelW) * 100.0;
+            double pctH = (targetH / (double) panelH) * 100.0;
+            int pct = (int) Math.round(Math.min(pctW, pctH));
+            onPercent.accept(clamp(pct, 10, 400));
+        });
+    }
+
+    private static int clamp(int v, int min, int max){
+        return Math.max(min, Math.min(max, v));
     }
 }

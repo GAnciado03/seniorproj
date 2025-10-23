@@ -1,5 +1,13 @@
 package videoapp.core;
 
+/**
+ * Represents a single subtitle cue with start/end times (ms) and
+ * display text, and utility to test temporal containment.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 public class CaptionCue {
     public final long startMs;
     public final long endMs;

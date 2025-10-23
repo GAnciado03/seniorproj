@@ -1,5 +1,13 @@
 package videoapp.core;
 
+/**
+ * Thin wrapper around OpenCV VideoCapture providing open/close,
+ * frame retrieval, timing and dimension queries, and millisecond seeking.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import org.opencv.core.Mat;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;

@@ -1,5 +1,14 @@
 package videoapp.util;
 
+/**
+ * Utilities to convert OpenCV Mat frames into
+ * Java BufferedImages instances, handling common
+ * channel formats and color conversions.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 

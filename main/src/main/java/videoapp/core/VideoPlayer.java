@@ -1,5 +1,14 @@
 package videoapp.core;
 
+/**
+ * High-level controller for video playback. Manages opening a source,
+ * spawning the playback thread, and providing controls like play, pause,
+ * seek, speed, target size, captions, and progress callbacks.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 public class VideoPlayer {
     public PlaybackThread thread;
     private VideoSource capture;

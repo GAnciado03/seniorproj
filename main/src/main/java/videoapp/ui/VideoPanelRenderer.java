@@ -1,5 +1,14 @@
 package videoapp.ui;
 
+/**
+ * Swing-based VideoRenderer that draws frames onto a
+ * JPanel with configurable scaling modes and DPI-aware
+ * rendering.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import videoapp.core.VideoRenderer;
 
 import javax.swing.*;

@@ -1,5 +1,13 @@
 package videoapp;
 
+/**
+ * Application entry point that initializes OpenCV, applies the system
+ * look and feel, and displays the main video player window.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import videoapp.ui.VideoPlayerFrame;
 import nu.pattern.OpenCV;
 

@@ -1,5 +1,14 @@
 package videoapp.core;
 
+/**
+ * Worker thread that pulls frames from a VideoSource, converts them
+ * to images, renders with VideoRenderer, handles pause
+ * and seek requests, and regulates timing based on FPS and speed.
+ *
+ * @author Glenn Anciado
+ * @version 1.0
+ */
+
 import videoapp.util.FrameConverter;
 
 import org.opencv.core.Mat;
