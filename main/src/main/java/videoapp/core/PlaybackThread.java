@@ -2,8 +2,9 @@ package videoapp.core;
 
 /**
  * Worker thread that pulls frames from a VideoSource, converts them
- * to images, renders with VideoRenderer, handles pause
- * and seek requests, and regulates timing based on FPS and speed.
+ * to BufferedImage, renders via VideoRenderer,
+ * handles pause/seek requests, and regulates timing based on FPS and speed.
+ * Renders every grabbed frame (no frame skipping) for smooth playback.
  *
  * @author Glenn Anciado
  * @version 1.0
@@ -76,8 +77,6 @@ public class PlaybackThread extends Thread{
             }
             long duration = source.durationMs();
             long nextTickNs = System.nanoTime();
-            BufferedImage bufA = null, bufB = null;
-            boolean useA = true;
             Mat frame = new Mat();
 
             while(playing) {
@@ -101,13 +100,9 @@ public class PlaybackThread extends Thread{
                 }
                 if(!source.grab() || !source.retrieve(frame) || frame.empty()) break;
 
-                if(useA) {
-                    bufA = FrameConverter.matToBufferedImage(frame);
-                    renderer.renderFrame(bufA);
-                } else {
-                    bufB = FrameConverter.matToBufferedImage(frame);
-                }
-                useA = !useA;
+                // Convert current frame and render every iteration (fixes frame skipping)
+                BufferedImage img = FrameConverter.matToBufferedImage(frame);
+                renderer.renderFrame(img);
 
                 long pos = source.positionMs();
                 if(progressListener != null) progressListener.onProgress(pos, duration);

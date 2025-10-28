@@ -30,8 +30,11 @@ public class VideoSource {
         return capture != null && capture.read(out);
     }
 
+    /**
+     * Frames per second reported by the source (may be 0 if unknown).
+     */
     public double fps() {
-        return (capture != null) ? capture.get(5) : 0.0;
+        return (capture != null) ? capture.get(Videoio.CAP_PROP_FPS) : 0.0;
     }
     public long frameCount() {
         return (capture != null) ? (long) capture.get(Videoio.CAP_PROP_FRAME_COUNT) : 0L;
@@ -66,5 +69,6 @@ public class VideoSource {
                 e = null;
             }
         }
+        capture = null;
     }
 }

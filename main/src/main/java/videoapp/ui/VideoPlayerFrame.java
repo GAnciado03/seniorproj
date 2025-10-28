@@ -11,11 +11,13 @@ package videoapp.ui;
 
 import videoapp.core.VideoPlayer;
 import videoapp.ui.VideoPanelRenderer.ScalingMode;
+import videoapp.util.CsvOverlayLoader;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.io.File;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -30,8 +32,10 @@ public class VideoPlayerFrame extends JFrame{
 
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
         final JButton openBtn = new JButton("Open Video...");
+        final JButton importCsvBtn = new JButton("Import CSV...");
         final JButton settingsBtn = new JButton("Settings");
         controls.add(openBtn);
+        controls.add(importCsvBtn);
         controls.add(settingsBtn);
 
         final ProgressBar progressBar = new ProgressBar();
@@ -82,6 +86,46 @@ public class VideoPlayerFrame extends JFrame{
         openBtn.addActionListener(e -> {
             chooserHandler.chooseToPlay();
             SwingUtilities.invokeLater(() -> progressBar.setPlayState(true));
+        });
+
+        importCsvBtn.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Select CSV with surfaceX,surfaceY");
+            java.io.File videos = new java.io.File(
+                new java.io.File(
+                    new java.io.File(
+                        new java.io.File(
+                            new java.io.File(System.getProperty("user.home"), "OneDrive"),
+                            "Documents"
+                        ),
+                        "GitHub"
+                    ),
+                    "seniorproj"
+                ),
+                "jgs-testing-data"
+            );
+            if (videos.isDirectory()) {
+                chooser.setCurrentDirectory(videos);
+            }
+            int rv = chooser.showOpenDialog(this);
+            if (rv == JFileChooser.APPROVE_OPTION) {
+                File file = chooser.getSelectedFile();
+                var timed = CsvOverlayLoader.loadTimed(file);
+                if (!timed.isEmpty()) {
+                    videoPanel.setTimedOverlayPoints(timed);
+                    JOptionPane.showMessageDialog(this,
+                            String.format("Loaded %d time-synced points from %s", timed.size(), file.getName()),
+                            "CSV Imported",
+                            JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    var points = CsvOverlayLoader.load(file);
+                    videoPanel.setOverlayPoints(points);
+                    JOptionPane.showMessageDialog(this,
+                            String.format("Loaded %d points from %s (no time column)", points.size(), file.getName()),
+                            "CSV Imported",
+                            JOptionPane.INFORMATION_MESSAGE);
+                }
+            }
         });
 
         settingsBtn.addActionListener(e -> {

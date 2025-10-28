@@ -15,6 +15,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class VideoPanelRenderer extends JPanel implements VideoRenderer{
     public enum ScalingMode {FIT, FILL, STRETCH, AUTO};
@@ -23,6 +25,10 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
     private volatile ScalingMode mode = ScalingMode.AUTO;
     private double scaleX = 1.0;
     private double scaleY = 1.0;
+    private final List<OverlayPoint> overlayPoints = new CopyOnWriteArrayList<>();
+    private final List<TimedOverlayPoint> timedOverlayPoints = new CopyOnWriteArrayList<>();
+    private volatile long currentPosMs = 0L;
+    private static final long TIME_WINDOW_MS = 50;
 
     public VideoPanelRenderer() {
         setBackground(new Color(18, 18, 18));
@@ -108,8 +114,70 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
             int y = (deviceH - drawH) / 2;
 
             graphics.drawImage(frame, x ,y, drawW, drawH, null);
+
+            // Draw overlay points as circles on top of the video
+            if (!timedOverlayPoints.isEmpty() || !overlayPoints.isEmpty()) {
+                final int radius = Math.max(4, Math.min(drawW, drawH) / 80); // adaptive size
+                final int diameter = radius * 2;
+                Composite old = graphics.getComposite();
+                graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.7f));
+                graphics.setColor(new Color(255, 64, 64));
+
+                if (!timedOverlayPoints.isEmpty()) {
+                    for (TimedOverlayPoint p : timedOverlayPoints) {
+                        long dt = Math.abs(p.timeMs - currentPosMs);
+                        if (dt > TIME_WINDOW_MS) continue;
+                        double px = x + (p.xNorm * drawW);
+                        double py = y + (p.yNorm * drawH);
+                        int cx = (int)Math.round(px) - radius;
+                        int cy = (int)Math.round(py) - radius;
+                        graphics.fillOval(cx, cy, diameter, diameter);
+                        graphics.setColor(Color.WHITE);
+                        graphics.drawOval(cx, cy, diameter, diameter);
+                        graphics.setColor(new Color(255, 64, 64));
+                    }
+                } else {
+                    for (OverlayPoint p : overlayPoints) {
+                        double px = x + (p.xNorm * drawW);
+                        double py = y + (p.yNorm * drawH);
+                        int cx = (int)Math.round(px) - radius;
+                        int cy = (int)Math.round(py) - radius;
+                        graphics.fillOval(cx, cy, diameter, diameter);
+                        graphics.setColor(Color.WHITE);
+                        graphics.drawOval(cx, cy, diameter, diameter);
+                        graphics.setColor(new Color(255, 64, 64));
+                    }
+                }
+
+                graphics.setComposite(old);
+            }
         } finally {
             graphics.dispose();
         }
+    }
+
+    /**
+     * Replace current static overlay points and repaint.
+     */
+    public void setOverlayPoints(List<OverlayPoint> points) {
+        overlayPoints.clear();
+        if (points != null) overlayPoints.addAll(points);
+        repaint();
+    }
+
+    /**
+     * Replace current time-synced overlay points and repaint.
+     */
+    public void setTimedOverlayPoints(List<TimedOverlayPoint> points) {
+        timedOverlayPoints.clear();
+        if (points != null) timedOverlayPoints.addAll(points);
+        repaint();
+    }
+
+    @Override
+    public void onProgress(long posMs, long durationMs) {
+        currentPosMs = posMs;
+        // repaint for time-synced overlays
+        if (!timedOverlayPoints.isEmpty()) repaint();
     }
 }
