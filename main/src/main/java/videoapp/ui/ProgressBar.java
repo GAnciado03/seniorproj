@@ -12,19 +12,32 @@ package videoapp.ui;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.net.URL;
 import java.util.function.Consumer;
 
 public class ProgressBar extends JPanel{
+    private final JButton settings = new JButton();
+    private final JButton fullscreen = new JButton();
     private final JButton play = new JButton();
     private final JSlider progress = new JSlider(0, 1000, 0);
     private final JLabel time = new JLabel("00:00 / 00:00");
     private boolean dragging = false;
 
     private Runnable onPlay;
+    private Runnable onSettings;
+    private Runnable onToggleFullscreen;
     private Consumer<Integer> progressFraction;
 
-    private final Icon playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY);
-    private final Icon pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE);
+    private final Icon playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY, Color.BLACK);
+    private final Icon pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE, Color.BLACK);
+    private final Icon settingsIcon = iconOrFallback("/icons/settings.png", 18, 18,
+            new GearIcon(18, 18, new Color(80, 80, 80)));
+    private final Icon fsEnterIcon = iconOrFallback("/icons/fullscreen.png", 18, 18,
+            new FullscreenIcon(18, 18, FullscreenIcon.Mode.ENTER, new Color(80, 80, 80)));
+    private final Icon fsExitIcon = iconOrFallback("/icons/minimize.png", 18, 18,
+            new FullscreenIcon(18, 18, FullscreenIcon.Mode.EXIT, new Color(80, 80, 80)));
 
     public ProgressBar() {
         super(new BorderLayout(12, 0));
@@ -41,7 +54,22 @@ public class ProgressBar extends JPanel{
         center.add(progress, BorderLayout.CENTER);
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
+        // Desired order: timestamp, settings, fullscreen
         right.add(time);
+
+        settings.setFocusable(false);
+        settings.setMargin(new Insets(4, 6, 4, 6));
+        settings.setText(null);
+        settings.setIcon(settingsIcon);
+        settings.setPreferredSize(new Dimension(32, 28));
+        right.add(settings);
+
+        fullscreen.setFocusable(false);
+        fullscreen.setMargin(new Insets(4, 6, 4, 6));
+        fullscreen.setText(null);
+        fullscreen.setIcon(fsEnterIcon);
+        fullscreen.setPreferredSize(new Dimension(32, 28));
+        right.add(fullscreen);
         add(left, BorderLayout.WEST);
         add(center, BorderLayout.CENTER);
         add(right, BorderLayout.EAST);
@@ -63,6 +91,62 @@ public class ProgressBar extends JPanel{
             }
         });
 
+        // Settings and Fullscreen actions
+        settings.addActionListener(e -> {
+            if (onSettings != null) onSettings.run();
+        });
+        fullscreen.addActionListener(e -> {
+            if (onToggleFullscreen != null) onToggleFullscreen.run();
+        });
+
+        // Jump-to-click and drag mapping for better seeking/rewind
+        progress.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                updateSliderFromMouse(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (progressFraction != null) {
+                    progressFraction.accept(progress.getValue());
+                }
+                dragging = false;
+            }
+        });
+        progress.addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                updateSliderFromMouse(e);
+            }
+        });
+
+    }
+
+    private static Icon iconOrFallback(String resourcePath, int w, int h, Icon fallback) {
+        try {
+            URL url = ProgressBar.class.getResource(resourcePath);
+            if (url == null) {
+                int slash = resourcePath.lastIndexOf('/');
+                String base = slash >= 0 ? resourcePath.substring(slash + 1) : resourcePath;
+                url = ProgressBar.class.getResource("/" + base);
+            }
+            if (url != null) {
+                ImageIcon ii = new ImageIcon(url);
+                Image scaled = ii.getImage().getScaledInstance(Math.max(8, w), Math.max(8, h), Image.SCALE_SMOOTH);
+                return new ImageIcon(scaled);
+            }
+        } catch (Throwable ignored) { }
+        return fallback;
+    }
+
+    private void updateSliderFromMouse(MouseEvent e) {
+        int w = progress.getWidth();
+        if (w <= 0) return;
+        int x = Math.max(0, Math.min(e.getX(), w));
+        int v = (int) Math.round((x / (double) w) * progress.getMaximum());
+        progress.setValue(v);
+        dragging = true;
     }
 
     public void setOnPlay(Runnable r) {
@@ -96,5 +180,20 @@ public class ProgressBar extends JPanel{
 
     public void setPlayState(boolean p) {
         play.setIcon(p ? pauseIcon : playIcon);
+    }
+
+    public void setOnSettings(Runnable r) { this.onSettings = r; }
+    public void setOnToggleFullscreen(Runnable r) { this.onToggleFullscreen = r; }
+    public void setFullscreen(boolean fullscreenOn) {
+        fullscreen.setIcon(fullscreenOn ? fsExitIcon : fsEnterIcon);
+    }
+
+    // Show a settings popup aligned to the right edge of the settings button
+    public void showSettingsMenu(JPopupMenu menu) {
+        if (menu == null) return;
+        Dimension ps = menu.getPreferredSize();
+        int x = settings.getWidth() - (ps != null ? ps.width : 0);
+        int y = settings.getHeight();
+        menu.show(settings, x, y);
     }
 }

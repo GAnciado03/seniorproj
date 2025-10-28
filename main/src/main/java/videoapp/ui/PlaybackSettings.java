@@ -11,8 +11,6 @@ package videoapp.ui;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 
-import videoapp.core.PlaybackConfig;
-
 public class PlaybackSettings {
     private static final PlaybackSettings INSTANCE = new PlaybackSettings();
     public static PlaybackSettings get() {

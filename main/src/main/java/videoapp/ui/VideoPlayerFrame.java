@@ -33,10 +33,8 @@ public class VideoPlayerFrame extends JFrame{
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
         final JButton openBtn = new JButton("Open Video...");
         final JButton importCsvBtn = new JButton("Import CSV...");
-        final JButton settingsBtn = new JButton("Settings");
         controls.add(openBtn);
         controls.add(importCsvBtn);
-        controls.add(settingsBtn);
 
         final ProgressBar progressBar = new ProgressBar();
 
@@ -48,6 +46,9 @@ public class VideoPlayerFrame extends JFrame{
         add(south, BorderLayout.SOUTH);
 
         final VideoPlayer player = new VideoPlayer(videoPanel);
+        // Fullscreen handling
+        final FullscreenManager fsMgr = new FullscreenManager();
+        final FullscreenManager.State[] fsState = new FullscreenManager.State[1];
         final AtomicInteger decodePercent = new AtomicInteger(100);
         final AtomicLong lastDurationMs = new AtomicLong(0);
 
@@ -84,7 +85,15 @@ public class VideoPlayerFrame extends JFrame{
         final VideoChooseHandler chooserHandler = new VideoChooseHandler(this, player);
 
         openBtn.addActionListener(e -> {
+            boolean wasFs = getGraphicsConfiguration().getDevice().getFullScreenWindow() == this;
+            if (wasFs) {
+                fsMgr.exit(this, fsState[0]);
+                fsState[0] = null;
+            }
             chooserHandler.chooseToPlay();
+            if (wasFs) {
+                fsState[0] = fsMgr.enter(this);
+            }
             SwingUtilities.invokeLater(() -> progressBar.setPlayState(true));
         });
 
@@ -128,18 +137,6 @@ public class VideoPlayerFrame extends JFrame{
             }
         });
 
-        settingsBtn.addActionListener(e -> {
-            SettingsMenu menu = new SettingsMenu(
-                speed -> SwingUtilities.invokeLater(() -> player.setSpeed(speed)),
-                pct -> {
-                    decodePercent.set(pct);
-                    if(resizeDebounce.isRunning()) resizeDebounce.restart(); else resizeDebounce.start();
-                },
-                videoPanel.getWidth(),
-                videoPanel.getHeight()
-            );
-            menu.show(settingsBtn, 0, settingsBtn.getHeight());
-        });
 
         player.setProgressListener((pos, dur) -> SwingUtilities.invokeLater(() -> {
             lastDurationMs.set(dur);
@@ -157,6 +154,32 @@ public class VideoPlayerFrame extends JFrame{
             if (dur > 0) {
                 long seek = Math.round(dur * (pct / 1000.0));
                 player.seekMs(seek);
+            }
+        });
+
+        progressBar.setOnSettings(() -> {
+            SettingsMenu menu = new SettingsMenu(
+                speed -> SwingUtilities.invokeLater(() -> player.setSpeed(speed)),
+                pct -> {
+                    decodePercent.set(pct);
+                    if(resizeDebounce.isRunning()) resizeDebounce.restart(); else resizeDebounce.start();
+                },
+                videoPanel.getWidth(),
+                videoPanel.getHeight()
+            );
+            progressBar.showSettingsMenu(menu);
+        });
+
+        progressBar.setFullscreen(false);
+        progressBar.setOnToggleFullscreen(() -> {
+            boolean isFs = getGraphicsConfiguration().getDevice().getFullScreenWindow() == this;
+            if (isFs) {
+                fsMgr.exit(this, fsState[0]);
+                fsState[0] = null;
+                progressBar.setFullscreen(false);
+            } else {
+                fsState[0] = fsMgr.enter(this);
+                progressBar.setFullscreen(true);
             }
         });
 
