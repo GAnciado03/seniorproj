@@ -6,7 +6,7 @@ package videoapp.ui;
  * rendering.
  *
  * @author Glenn Anciado
- * @version 1.0
+ * @version 2.0
  */
 
 import videoapp.core.VideoRenderer;
@@ -28,18 +28,38 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
     private final List<OverlayPoint> overlayPoints = new CopyOnWriteArrayList<>();
     private final List<TimedOverlayPoint> timedOverlayPoints = new CopyOnWriteArrayList<>();
     private volatile long currentPosMs = 0L;
-    private static final long TIME_WINDOW_MS = 50;
+    private volatile long overlayTimeOffsetMs = 0L;
+    
+    private volatile double overlayTimeScale = 1.0;
+    
+    private volatile boolean flipY = false;
+    private volatile boolean swapXY = false;
+    private static final long MAX_INTERP_GAP_MS = 250;
+    private static final long MAX_SHOW_AGE_MS  = 300;
 
     public VideoPanelRenderer() {
         setBackground(new Color(18, 18, 18));
     }
 
     public void setMode(ScalingMode mode) {
+        /**
+         * Sets how the video is scaled within the panel (fit, fill, stretch, or auto).
+         * Triggers a repaint so the new mode is reflected immediately.
+         *
+         * @author Glenn Anciado
+         * @version 2.0
+         */
         this.mode = mode;
         repaint();
     }
 
     public ScalingMode getMode() {
+        /**
+         * Returns the current scaling mode used by the renderer.
+         *
+         * @author Glenn Anciado
+         * @version 2.0
+         */
         return mode;
     }
 
@@ -73,9 +93,9 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
         try {
             graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             var gc = graphics.getDeviceConfiguration();
-            var tx = (gc != null) ? gc.getDefaultTransform() : new AffineTransform();
-            scaleX = tx.getScaleX();
-            scaleY = tx.getScaleY();
+            AffineTransform deviceTx = (gc != null) ? gc.getDefaultTransform() : new AffineTransform();
+            scaleX = deviceTx.getScaleX();
+            scaleY = deviceTx.getScaleY();
             graphics.scale(1.0 / scaleX, 1.0 / scaleY);
             int imgW = frame.getWidth();
             int imgH = frame.getHeight();
@@ -115,41 +135,109 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
 
             graphics.drawImage(frame, x ,y, drawW, drawH, null);
 
-            // Draw overlay points as circles on top of the video
+            
             if (!timedOverlayPoints.isEmpty() || !overlayPoints.isEmpty()) {
-                final int radius = Math.max(4, Math.min(drawW, drawH) / 80); // adaptive size
+                final int radius = Math.max(6, Math.min(drawW, drawH) / 80);
                 final int diameter = radius * 2;
-                Composite old = graphics.getComposite();
-                graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.7f));
-                graphics.setColor(new Color(255, 64, 64));
+                final float strokePx = Math.max(2f, Math.min(10f, Math.min(drawW, drawH) / 180f));
+                final Color ringColor = new Color(255, 220, 0);
+                final Color textColor = new Color(80, 120, 220);
+
+                Object aaOld = graphics.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                Stroke oldStroke = graphics.getStroke();
+                graphics.setStroke(new BasicStroke(strokePx));
+
+                Font oldFont = graphics.getFont();
+                int fontSize = Math.max(12, (int)Math.round(diameter * 0.9));
+                graphics.setFont(oldFont.deriveFont((float) fontSize));
 
                 if (!timedOverlayPoints.isEmpty()) {
-                    for (TimedOverlayPoint p : timedOverlayPoints) {
-                        long dt = Math.abs(p.timeMs - currentPosMs);
-                        if (dt > TIME_WINDOW_MS) continue;
-                        double px = x + (p.xNorm * drawW);
-                        double py = y + (p.yNorm * drawH);
-                        int cx = (int)Math.round(px) - radius;
-                        int cy = (int)Math.round(py) - radius;
-                        graphics.fillOval(cx, cy, diameter, diameter);
-                        graphics.setColor(Color.WHITE);
+                    TimedOverlayPoint left = null, right = null;
+                    int n = timedOverlayPoints.size();
+                    int lo = 0, hi = n - 1, pos = n;
+                    while (lo <= hi) {
+                        int mid = (lo + hi) >>> 1;
+                        long t = timedOverlayPoints.get(mid).timeMs;
+                        if (t >= currentPosMs) { pos = mid; hi = mid - 1; }
+                        else { lo = mid + 1; }
+                    }
+                    if (pos < n) right = timedOverlayPoints.get(pos);
+                    if (pos - 1 >= 0) left = timedOverlayPoints.get(pos - 1);
+
+                    Double drawX = null, drawY = null;
+                    int nearestIndex = -1;
+                    if (left != null && right != null && right.timeMs > left.timeMs) {
+                        long gap = right.timeMs - left.timeMs;
+                        if (gap <= MAX_INTERP_GAP_MS && currentPosMs >= left.timeMs && currentPosMs <= right.timeMs) {
+                            double w = (currentPosMs - left.timeMs) / (double) gap;
+                            double xn = left.xNorm + (right.xNorm - left.xNorm) * w;
+                            double yn = left.yNorm + (right.yNorm - left.yNorm) * w;
+                            double[] mapped = mapNorm(xn, yn, x, y, drawW, drawH);
+                            drawX = mapped[0];
+                            drawY = mapped[1];
+                            nearestIndex = (Math.abs(currentPosMs - left.timeMs) <= Math.abs(currentPosMs - right.timeMs))
+                                    ? (pos - 1) : pos;
+                        }
+                    }
+                    if (drawX == null || drawY == null) {
+                        TimedOverlayPoint nearest = null;
+                        long bestDt = Long.MAX_VALUE;
+                        if (left != null) {
+                            long dt = Math.abs(currentPosMs - left.timeMs);
+                            if (dt < bestDt) { bestDt = dt; nearest = left; nearestIndex = pos - 1; }
+                        }
+                        if (right != null) {
+                            long dt = Math.abs(currentPosMs - right.timeMs);
+                            if (dt < bestDt) { bestDt = dt; nearest = right; nearestIndex = pos; }
+                        }
+                        if (nearest != null && bestDt <= MAX_SHOW_AGE_MS) {
+                            double[] mapped = mapNorm(nearest.xNorm, nearest.yNorm, x, y, drawW, drawH);
+                            drawX = mapped[0];
+                            drawY = mapped[1];
+                        }
+                    }
+
+                    if (drawX != null && drawY != null) {
+                        int cx = (int)Math.round(drawX) - radius;
+                        int cy = (int)Math.round(drawY) - radius;
+                        graphics.setColor(ringColor);
                         graphics.drawOval(cx, cy, diameter, diameter);
-                        graphics.setColor(new Color(255, 64, 64));
+
+                        String label = (nearestIndex >= 0) ? Integer.toString(nearestIndex + 1) : "";
+                        graphics.setColor(textColor);
+                        FontMetrics fm = graphics.getFontMetrics();
+                        int textW = fm.stringWidth(label);
+                        int textX = cx + radius - (textW / 2);
+                        int textY = cy + radius + (fm.getAscent() - fm.getDescent()) / 2;
+                        graphics.drawString(label, textX, textY);
                     }
                 } else {
+                    int i = 1;
                     for (OverlayPoint p : overlayPoints) {
-                        double px = x + (p.xNorm * drawW);
-                        double py = y + (p.yNorm * drawH);
+                        double[] mapped = mapNorm(p.xNorm, p.yNorm, x, y, drawW, drawH);
+                        double px = mapped[0];
+                        double py = mapped[1];
                         int cx = (int)Math.round(px) - radius;
                         int cy = (int)Math.round(py) - radius;
-                        graphics.fillOval(cx, cy, diameter, diameter);
-                        graphics.setColor(Color.WHITE);
+
+                        graphics.setColor(ringColor);
                         graphics.drawOval(cx, cy, diameter, diameter);
-                        graphics.setColor(new Color(255, 64, 64));
+
+                        String label = Integer.toString(i++);
+                        graphics.setColor(textColor);
+                        FontMetrics fm = graphics.getFontMetrics();
+                        int textW = fm.stringWidth(label);
+                        int textX = cx + radius - (textW / 2);
+                        int textY = cy + radius + (fm.getAscent() - fm.getDescent()) / 2;
+                        graphics.drawString(label, textX, textY);
                     }
                 }
 
-                graphics.setComposite(old);
+                graphics.setStroke(oldStroke);
+                graphics.setFont(oldFont);
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaOld);
             }
         } finally {
             graphics.dispose();
@@ -157,7 +245,11 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
     }
 
     /**
-     * Replace current static overlay points and repaint.
+     * Replaces the current static overlay points and repaints the panel.
+     * Points are interpreted as normalized positions relative to the drawn video area.
+     *
+     * @author Glenn Anciado
+     * @version 2.0
      */
     public void setOverlayPoints(List<OverlayPoint> points) {
         overlayPoints.clear();
@@ -166,18 +258,98 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer{
     }
 
     /**
-     * Replace current time-synced overlay points and repaint.
+     * Replaces the current time-synced overlay points and repaints.
+     * The list is sorted by timestamp to enable fast lookup and interpolation.
+     *
+     * @author Glenn Anciado
+     * @version 2.0
      */
     public void setTimedOverlayPoints(List<TimedOverlayPoint> points) {
         timedOverlayPoints.clear();
-        if (points != null) timedOverlayPoints.addAll(points);
+        if (points != null) {
+            java.util.ArrayList<TimedOverlayPoint> sorted = new java.util.ArrayList<>(points);
+            sorted.sort(java.util.Comparator.comparingLong(p -> p.timeMs));
+            timedOverlayPoints.addAll(sorted);
+        }
         repaint();
     }
 
+    /**
+     * Applies a time offset so overlays are shifted relative to the video timeline.
+     * Positive values move overlays later; negative values move them earlier.
+     *
+     * @author Glenn Anciado
+     * @version 2.0
+     */
+    public void setOverlayTimeOffsetMs(long offsetMs) {
+        this.overlayTimeOffsetMs = offsetMs;
+    }
+
+    /**
+     * Returns the current overlay time offset in milliseconds.
+     *
+     * @author Glenn Anciado
+     * @version 2.0
+     */
+    public long getOverlayTimeOffsetMs() {
+        return overlayTimeOffsetMs;
+    }
+
+    /**
+     * Anchors the overlay so that the specified 1-based CSV row aligns with video t=0.
+     * If the index is invalid, the anchor is cleared.
+     *
+     * @author Glenn Anciado
+     * @version 2.0
+     */
+    public void setTimedOverlayAnchorIndex(int index1Based) {
+        if (index1Based <= 0 || timedOverlayPoints.isEmpty()) {
+            this.overlayTimeOffsetMs = 0L;
+            return;
+        }
+        int idx = Math.min(index1Based - 1, timedOverlayPoints.size() - 1);
+        if (idx >= 0) {
+            this.overlayTimeOffsetMs = -timedOverlayPoints.get(idx).timeMs;
+        }
+    }
+
+    /**
+     * Receives playback progress from the player, updates internal time (with scaling
+     * and offset), and requests repaint when time-synced overlays are active.
+     *
+     * @author Glenn Anciado
+     * @version 2.0
+     */
     @Override
     public void onProgress(long posMs, long durationMs) {
-        currentPosMs = posMs;
-        // repaint for time-synced overlays
+        long scaled = (long) Math.round(posMs * (overlayTimeScale <= 0 ? 1.0 : overlayTimeScale));
+        currentPosMs = scaled + overlayTimeOffsetMs;
         if (!timedOverlayPoints.isEmpty()) repaint();
     }
+
+    private double[] mapNorm(double xn, double yn, int x, int y, int drawW, int drawH) {
+        double fx = xn, fy = yn;
+        if (swapXY) {
+            double tmp = fx; fx = fy; fy = tmp;
+        }
+        if (flipY) {
+            fy = 1.0 - fy;
+        }
+        double px = x + (fx * drawW);
+        double py = y + (fy * drawH);
+        return new double[]{px, py};
+    }
+
+    /** Returns whether the Y axis is flipped when mapping overlay points. */
+    public boolean isFlipY() { return flipY; }
+    /** Returns whether X and Y are swapped when mapping overlay points. */
+    public boolean isSwapXY() { return swapXY; }
+    /** Enables or disables Y-axis flip for overlay mapping. */
+    public void setFlipY(boolean v) { this.flipY = v; }
+    /** Enables or disables X/Y swap for overlay mapping. */
+    public void setSwapXY(boolean v) { this.swapXY = v; }
+    /** Sets a time scale applied to video time before aligning overlays. */
+    public void setOverlayTimeScale(double s) { this.overlayTimeScale = (s > 0 && Double.isFinite(s)) ? s : 1.0; }
+    /** Returns the current overlay time scale factor. */
+    public double getOverlayTimeScale() { return overlayTimeScale; }
 }

@@ -66,7 +66,6 @@ public final class CsvOverlayLoader {
                         y = tmp[1];
                     }
 
-                    // Clamp to [0,1] if values appear normalized; if they look like pixels, skip
                     if (Double.isFinite(x) && Double.isFinite(y)) {
                         if (x >= 0.0 && x <= 1.0 && y >= 0.0 && y <= 1.0) {
                             out.add(new OverlayPoint(x, y));
@@ -76,7 +75,6 @@ public final class CsvOverlayLoader {
                 }
             }
         } catch (Exception e) {
-            // swallow; return what we have
         }
         return out;
     }
@@ -101,7 +99,7 @@ public final class CsvOverlayLoader {
                 }
             }
 
-            if (tIdx < 0) return out; // no time column
+            if (tIdx < 0) return out;
 
             String line;
             Double firstTimeSec = null;
@@ -119,7 +117,6 @@ public final class CsvOverlayLoader {
                         x = parse(parts[xIdx]);
                         y = parse(parts[yIdx]);
                     } else {
-                        // fallback: first two numeric-looking fields (besides time column)
                         int found = 0;
                         double[] tmp = new double[2];
                         for (int i = 0; i < parts.length; i++) {
@@ -155,7 +152,6 @@ public final class CsvOverlayLoader {
         return Double.parseDouble(s);
     }
 
-    // Minimal CSV split supporting simple quoted fields and commas
     private static String[] splitCsv(String line) {
         List<String> fields = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
@@ -166,7 +162,7 @@ public final class CsvOverlayLoader {
                 if (c == '"') {
                     if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
                         sb.append('"');
-                        i++; // escaped quote
+                        i++;
                     } else {
                         inQuotes = false;
                     }

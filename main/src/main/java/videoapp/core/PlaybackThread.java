@@ -100,7 +100,6 @@ public class PlaybackThread extends Thread{
                 }
                 if(!source.grab() || !source.retrieve(frame) || frame.empty()) break;
 
-                // Convert current frame and render every iteration (fixes frame skipping)
                 BufferedImage img = FrameConverter.matToBufferedImage(frame);
                 renderer.renderFrame(img);
 

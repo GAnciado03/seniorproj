@@ -6,7 +6,7 @@ package videoapp.ui;
  * handling to adjust decode target size.
  *
  * @author Glenn Anciado
- * @version 1.2
+ * @version 1.6
  */
 
 import videoapp.core.VideoPlayer;
@@ -22,13 +22,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class VideoPlayerFrame extends JFrame{
+    /**
+     * Constructs and wires the main video player window. Builds the video panel
+     * and playback controls, hooks up file open/CSV import actions, progress and
+     * seek handling, fullscreen toggling, and resize-driven decode target updates.
+     * Also initializes initial sizing and ensures the UI reflects play/pause state.
+     *
+     * @author Glenn Anciado
+     * @version 1.6
+     */
     public VideoPlayerFrame() {
         super("Video Player");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
         VideoPanelRenderer videoPanel = new VideoPanelRenderer();
-        videoPanel.setMode(ScalingMode.AUTO);
+        videoPanel.setMode(ScalingMode.FIT);
 
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
         final JButton openBtn = new JButton("Open Video...");
@@ -46,10 +55,10 @@ public class VideoPlayerFrame extends JFrame{
         add(south, BorderLayout.SOUTH);
 
         final VideoPlayer player = new VideoPlayer(videoPanel);
-        // Fullscreen handling
         final FullscreenManager fsMgr = new FullscreenManager();
         final FullscreenManager.State[] fsState = new FullscreenManager.State[1];
         final AtomicInteger decodePercent = new AtomicInteger(100);
+        final java.util.concurrent.atomic.AtomicReference<Double> currentSpeed = new java.util.concurrent.atomic.AtomicReference<>(1.0);
         final AtomicLong lastDurationMs = new AtomicLong(0);
 
         final Timer resizeDebounce = new Timer(140, e-> {
@@ -91,10 +100,11 @@ public class VideoPlayerFrame extends JFrame{
                 fsState[0] = null;
             }
             chooserHandler.chooseToPlay();
+            player.pause();
             if (wasFs) {
                 fsState[0] = fsMgr.enter(this);
             }
-            SwingUtilities.invokeLater(() -> progressBar.setPlayState(true));
+            SwingUtilities.invokeLater(() -> progressBar.setPlayState(false));
         });
 
         importCsvBtn.addActionListener(e -> {
@@ -122,6 +132,17 @@ public class VideoPlayerFrame extends JFrame{
                 var timed = CsvOverlayLoader.loadTimed(file);
                 if (!timed.isEmpty()) {
                     videoPanel.setTimedOverlayPoints(timed);
+                    videoPanel.setTimedOverlayAnchorIndex(49);
+                    try {
+                        long dur = player.durationMs();
+                        if (dur > 0 && timed.size() > 1600) {
+                            long t0 = Math.max(0, timed.get(49 - 1).timeMs);
+                            long t1 = Math.max(t0 + 1, timed.get(1600 - 1).timeMs);
+                            long csvRange = Math.max(1, t1 - t0);
+                            double scale = csvRange / (double) dur;
+                            videoPanel.setOverlayTimeScale(scale);
+                        }
+                    } catch (Throwable ignore) {}
                     JOptionPane.showMessageDialog(this,
                             String.format("Loaded %d time-synced points from %s", timed.size(), file.getName()),
                             "CSV Imported",
@@ -159,7 +180,12 @@ public class VideoPlayerFrame extends JFrame{
 
         progressBar.setOnSettings(() -> {
             SettingsMenu menu = new SettingsMenu(
-                speed -> SwingUtilities.invokeLater(() -> player.setSpeed(speed)),
+                currentSpeed.get(),
+                decodePercent.get(),
+                speed -> {
+                    currentSpeed.set(speed);
+                    SwingUtilities.invokeLater(() -> player.setSpeed(speed));
+                },
                 pct -> {
                     decodePercent.set(pct);
                     if(resizeDebounce.isRunning()) resizeDebounce.restart(); else resizeDebounce.start();

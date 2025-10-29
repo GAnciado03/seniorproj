@@ -37,20 +37,18 @@ public class FullscreenIcon implements Icon {
             int pad = Math.max(2, Math.min(width, height) / 6);
             int w = width - pad * 2;
             int h = height - pad * 2;
-            int t = Math.max(2, Math.min(w, h) / 7); // stroke thickness
+            int t = Math.max(2, Math.min(w, h) / 7);
             int cx = pad + w / 2;
             int cy = pad + h / 2;
             int m = Math.min(w, h);
             int head = Math.max(3, m / 6);
 
             if (mode == Mode.ENTER) {
-                // Outward arrows: from near center to corners
-                drawArrow(g2, cx, cy, pad + w - 1, pad + 1, t, head);        // to top-right
-                drawArrow(g2, cx, cy, pad + 1, pad + h - 1, t, head);        // to bottom-left
+                drawArrow(g2, cx, cy, pad + w - 1, pad + 1, t, head);
+                drawArrow(g2, cx, cy, pad + 1, pad + h - 1, t, head);
             } else {
-                // Inward arrows: from corners toward center (like provided minimize image)
-                drawArrow(g2, pad + w - 1, pad + 1, cx, cy, t, head);        // from top-right inward
-                drawArrow(g2, pad + 1, pad + h - 1, cx, cy, t, head);        // from bottom-left inward
+                drawArrow(g2, pad + w - 1, pad + 1, cx, cy, t, head);
+                drawArrow(g2, pad + 1, pad + h - 1, cx, cy, t, head);
             }
         } finally {
             g2.dispose();

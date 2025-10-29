@@ -46,7 +46,7 @@ public class PlayPauseIcon implements Icon {
                 int[] xs = { pad, pad, pad + w };
                 int[] ys = { pad, pad + h, pad + h / 2 };
                 g2.fillPolygon(xs, ys, 3);
-            } else { // PAUSE
+            } else {
                 int barW = Math.max(2, w / 3);
                 int gap = Math.max(2, w / 6);
                 float arc = Math.max(2f, Math.min(barW, h) * 0.25f);

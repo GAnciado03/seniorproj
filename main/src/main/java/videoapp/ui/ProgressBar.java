@@ -54,7 +54,6 @@ public class ProgressBar extends JPanel{
         center.add(progress, BorderLayout.CENTER);
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
-        // Desired order: timestamp, settings, fullscreen
         right.add(time);
 
         settings.setFocusable(false);
@@ -91,7 +90,6 @@ public class ProgressBar extends JPanel{
             }
         });
 
-        // Settings and Fullscreen actions
         settings.addActionListener(e -> {
             if (onSettings != null) onSettings.run();
         });
@@ -99,7 +97,6 @@ public class ProgressBar extends JPanel{
             if (onToggleFullscreen != null) onToggleFullscreen.run();
         });
 
-        // Jump-to-click and drag mapping for better seeking/rewind
         progress.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -188,7 +185,6 @@ public class ProgressBar extends JPanel{
         fullscreen.setIcon(fullscreenOn ? fsExitIcon : fsEnterIcon);
     }
 
-    // Show a settings popup aligned to the right edge of the settings button
     public void showSettingsMenu(JPopupMenu menu) {
         if (menu == null) return;
         Dimension ps = menu.getPreferredSize();
