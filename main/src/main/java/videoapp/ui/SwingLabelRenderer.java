@@ -1,5 +1,11 @@
 package videoapp.ui;
 
+import videoapp.core.VideoRenderer;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+
 /**
  * Simple {@link videoapp.core.VideoRenderer} that renders frames onto a
  * JLabel as an ImageIcon, and shows
@@ -8,12 +14,6 @@ package videoapp.ui;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import videoapp.core.VideoRenderer;
-
-import javax.swing.*;
-import java.awt.*;
-import java.awt.image.BufferedImage;
 
 public class SwingLabelRenderer implements VideoRenderer{
     private final JLabel label;

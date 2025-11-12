@@ -1,5 +1,8 @@
 package videoapp.ui;
 
+import javax.swing.*;
+import java.awt.*;
+
 /**
  * Utility for entering, exiting, and toggling fullscreen mode on a
  * JFrame, preserving and restoring prior window state.
@@ -7,9 +10,6 @@ package videoapp.ui;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import javax.swing.*;
-import java.awt.*;
 
 public class FullscreenManager {
     public record State(Rectangle prevBounds, boolean prevDecorated, GraphicsDevice device) {}

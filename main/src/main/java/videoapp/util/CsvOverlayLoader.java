@@ -6,153 +6,275 @@ import videoapp.ui.TimedOverlayPoint;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Minimal CSV reader for gaze/point overlays. Looks for columns named
- * "surfaceX" and "surfaceY" (normalized 0..1). If not found, tries
- * to read the first two numeric columns as x,y normalized values.
- *
- * Stateless utility, not a singleton. All methods are static and the
- * constructor is private to prevent instantiation.
+ * Loads overlay points from CSV files while keeping parsing logic isolated from UI concerns.
+ * The loader is instantiable so callers can inject their own instance instead of relying on globals.
  *
  * @author Glenn Anciado
- * @version 1.0
+ * @version 2.0
  */
 
-public final class CsvOverlayLoader {
-    private CsvOverlayLoader() {}
+public class CsvOverlayLoader {
 
-    public static List<OverlayPoint> load(File csv) {
-        List<OverlayPoint> out = new ArrayList<>();
-        if (csv == null || !csv.isFile()) return out;
-        try (BufferedReader br = new BufferedReader(new FileReader(csv, StandardCharsets.UTF_8))) {
-            String header = br.readLine();
-            if (header == null) return out;
-            String[] cols = splitCsv(header);
+    public List<OverlayPoint> load(File csv) {
+        List<OverlayPoint> points = new ArrayList<>();
+        if (!isReadable(csv)) {
+            return points;
+        }
 
-            int xIdx = -1, yIdx = -1;
-            for (int i = 0; i < cols.length; i++) {
-                String name = cols[i].trim().toLowerCase(Locale.ROOT);
-                if (name.equals("surfacex")) xIdx = i;
-                else if (name.equals("surfacey")) yIdx = i;
+        try (BufferedReader br = reader(csv)) {
+            String[] header = readHeader(br);
+            if (header == null) {
+                return points;
             }
 
+            OverlayColumns columns = detectOverlayColumns(header, false);
             String line;
             while ((line = br.readLine()) != null) {
-                if (line.isEmpty()) continue;
+                if (line.isEmpty()) {
+                    continue;
+                }
                 String[] parts = splitCsv(line);
-                try {
-                    double x, y;
-                    if (xIdx >= 0 && yIdx >= 0 && xIdx < parts.length && yIdx < parts.length) {
-                        x = parse(parts[xIdx]);
-                        y = parse(parts[yIdx]);
-                    } else {
-                        int found = 0;
-                        double[] tmp = new double[2];
-                        for (String p : parts) {
-                            try {
-                                double v = parse(p);
-                                tmp[found++] = v;
-                                if (found == 2) break;
-                            } catch (Exception ignore) {
-                            }
-                        }
-                        if (found < 2) continue;
-                        x = tmp[0];
-                        y = tmp[1];
-                    }
-
-                    if (Double.isFinite(x) && Double.isFinite(y)) {
-                        if (x >= 0.0 && x <= 1.0 && y >= 0.0 && y <= 1.0) {
-                            out.add(new OverlayPoint(x, y));
-                        }
-                    }
-                } catch (Exception ignore) {
+                double[] xy = extractCoordinates(parts, columns);
+                if (xy == null) {
+                    continue;
+                }
+                double x = xy[0];
+                double y = xy[1];
+                if (isValidNorm(x) && isValidNorm(y)) {
+                    points.add(new OverlayPoint(x, y));
                 }
             }
-        } catch (Exception e) {
+        } catch (Exception ignore) {
         }
-        return out;
+        return points;
     }
 
+    public List<TimedOverlayPoint> loadTimed(File csv) {
+        List<TimedOverlayPoint> points = new ArrayList<>();
+        if (!isReadable(csv)) {
+            return points;
+        }
 
-    public static List<TimedOverlayPoint> loadTimed(File csv) {
-        List<TimedOverlayPoint> out = new ArrayList<>();
-        if (csv == null || !csv.isFile()) return out;
-        try (BufferedReader br = new BufferedReader(new FileReader(csv, StandardCharsets.UTF_8))) {
-            String header = br.readLine();
-            if (header == null) return out;
-            String[] cols = splitCsv(header);
-
-            int xIdx = -1, yIdx = -1, tIdx = -1;
-            for (int i = 0; i < cols.length; i++) {
-                String name = cols[i].trim().toLowerCase(Locale.ROOT);
-                if (name.equals("surfacex")) xIdx = i;
-                else if (name.equals("surfacey")) yIdx = i;
-                else if (name.equals("devicetimestamp") || name.equals("localtimestamp") ||
-                         name.equals("timestamp") || name.equals("time") || name.equals("t")) {
-                    if (tIdx < 0) tIdx = i;
-                }
+        try (BufferedReader br = reader(csv)) {
+            String[] header = readHeader(br);
+            if (header == null) {
+                return points;
             }
 
-            if (tIdx < 0) return out;
+            OverlayColumns columns = detectOverlayColumns(header, true);
+            if (!columns.hasTime()) {
+                return points;
+            }
 
             String line;
             Double firstTimeSec = null;
             while ((line = br.readLine()) != null) {
-                if (line.isEmpty()) continue;
+                if (line.isEmpty()) {
+                    continue;
+                }
                 String[] parts = splitCsv(line);
-                if (tIdx >= parts.length) continue;
+                if (columns.timeIdx() >= parts.length) {
+                    continue;
+                }
                 try {
-                    double tSec = parse(parts[tIdx]);
-                    if (firstTimeSec == null) firstTimeSec = tSec;
+                    double tSec = parse(parts[columns.timeIdx()]);
+                    if (firstTimeSec == null) {
+                        firstTimeSec = tSec;
+                    }
                     double relSec = tSec - firstTimeSec;
-
-                    double x, y;
-                    if (xIdx >= 0 && yIdx >= 0 && xIdx < parts.length && yIdx < parts.length) {
-                        x = parse(parts[xIdx]);
-                        y = parse(parts[yIdx]);
-                    } else {
-                        int found = 0;
-                        double[] tmp = new double[2];
-                        for (int i = 0; i < parts.length; i++) {
-                            if (i == tIdx) continue;
-                            try {
-                                double v = parse(parts[i]);
-                                tmp[found++] = v;
-                                if (found == 2) break;
-                            } catch (Exception ignore) {}
-                        }
-                        if (found < 2) continue;
-                        x = tmp[0];
-                        y = tmp[1];
+                    if (!Double.isFinite(relSec) || relSec < -3600 || relSec > 1e8) {
+                        continue;
                     }
 
-                    if (Double.isFinite(x) && Double.isFinite(y) &&
-                        x >= 0.0 && x <= 1.0 && y >= 0.0 && y <= 1.0 &&
-                        Double.isFinite(relSec) && relSec >= -3600 && relSec <= 1e8) {
-                        long ms = (long) Math.round(relSec * 1000.0);
-                        out.add(new TimedOverlayPoint(x, y, ms));
+                    double[] xy = extractCoordinates(parts, columns);
+                    if (xy == null) {
+                        continue;
                     }
+                    double x = xy[0];
+                    double y = xy[1];
+                    if (!isValidNorm(x) || !isValidNorm(y)) {
+                        continue;
+                    }
+                    long ms = Math.round(relSec * 1000.0);
+                    points.add(new TimedOverlayPoint(x, y, ms));
                 } catch (Exception ignore) {
                 }
             }
-        } catch (Exception e) {
+        } catch (Exception ignore) {
         }
-        return out;
+        return points;
     }
 
-    private static double parse(String s) {
-        s = s.trim();
-        if (s.isEmpty()) throw new IllegalArgumentException("empty");
-        return Double.parseDouble(s);
+    public Long suggestOffsetFromFrameIndex(File csv, double fps) {
+        if (!isReadable(csv) || !(fps > 0 && Double.isFinite(fps))) {
+            return null;
+        }
+
+        try (BufferedReader br = reader(csv)) {
+            String[] header = readHeader(br);
+            if (header == null) {
+                return null;
+            }
+
+            FrameColumns columns = detectFrameColumns(header);
+            if (!columns.valid()) {
+                return null;
+            }
+
+            List<Long> offsets = new ArrayList<>();
+            String line;
+            Double firstTimeSec = null;
+            int rows = 0;
+            while ((line = br.readLine()) != null && rows < 500) {
+                if (line.isEmpty()) {
+                    continue;
+                }
+                String[] parts = splitCsv(line);
+                if (!columns.inBounds(parts.length)) {
+                    continue;
+                }
+                try {
+                    double tSec = parse(parts[columns.timeIdx()]);
+                    if (firstTimeSec == null) {
+                        firstTimeSec = tSec;
+                    }
+                    double relSec = tSec - firstTimeSec;
+                    if (!Double.isFinite(relSec)) {
+                        continue;
+                    }
+                    long csvMs = Math.round(relSec * 1000.0);
+                    csvMs += columns.durationAdjustment(parts);
+                    long frameIndex = Math.round(parse(parts[columns.frameIdx()]));
+                    long expectedMs = Math.round((frameIndex * 1000.0) / fps);
+                    offsets.add(expectedMs - csvMs);
+                    rows++;
+                } catch (Exception ignore) {
+                }
+            }
+
+            if (offsets.isEmpty()) {
+                return null;
+            }
+            Collections.sort(offsets);
+            return offsets.get(offsets.size() / 2);
+        } catch (Exception ignore) {
+            return null;
+        }
     }
 
-    private static String[] splitCsv(String line) {
+    private boolean isReadable(File csv) {
+        return csv != null && csv.isFile();
+    }
+
+    private BufferedReader reader(File csv) throws IOException {
+        return new BufferedReader(new FileReader(csv, StandardCharsets.UTF_8));
+    }
+
+    private String[] readHeader(BufferedReader br) throws IOException {
+        String header = br.readLine();
+        return (header == null) ? null : splitCsv(header);
+    }
+
+    private OverlayColumns detectOverlayColumns(String[] cols, boolean includeTime) {
+        int xIdx = -1;
+        int yIdx = -1;
+        int timeIdx = -1;
+        for (int i = 0; i < cols.length; i++) {
+            String name = cols[i];
+            if (isXName(name)) {
+                xIdx = i;
+            } else if (isYName(name)) {
+                yIdx = i;
+            } else if (includeTime && timeIdx < 0 && isTimeName(name)) {
+                timeIdx = i;
+            }
+        }
+        return new OverlayColumns(xIdx, yIdx, includeTime ? timeIdx : -1);
+    }
+
+    private FrameColumns detectFrameColumns(String[] cols) {
+        int frameIdx = -1;
+        int timeIdx = -1;
+        int durationIdx = -1;
+        for (int i = 0; i < cols.length; i++) {
+            String name = cols[i].trim().toLowerCase(Locale.ROOT);
+            if (frameIdx < 0 && (name.equals("start_frame_index") || name.equals("frame") ||
+                    name.equals("start_frame") || name.equals("frame_index"))) {
+                frameIdx = i;
+            } else if (durationIdx < 0 && (name.equals("duration") || name.equals("duration_ms"))) {
+                durationIdx = i;
+            } else if (timeIdx < 0 && isTimeName(name)) {
+                timeIdx = i;
+            }
+        }
+        return new FrameColumns(frameIdx, timeIdx, durationIdx);
+    }
+
+    private double[] extractCoordinates(String[] parts, OverlayColumns columns) {
+        if (columns.xIdx() >= 0 && columns.yIdx() >= 0 &&
+                columns.xIdx() < parts.length && columns.yIdx() < parts.length) {
+            try {
+                return new double[]{parse(parts[columns.xIdx()]), parse(parts[columns.yIdx()])};
+            } catch (Exception ignore) {
+                return null;
+            }
+        }
+        return findFirstTwoNumbers(parts, columns.timeIdx());
+    }
+
+    private double[] findFirstTwoNumbers(String[] parts, int skipIndex) {
+        double[] tmp = new double[2];
+        int found = 0;
+        for (int i = 0; i < parts.length && found < 2; i++) {
+            if (i == skipIndex) {
+                continue;
+            }
+            try {
+                tmp[found++] = parse(parts[i]);
+            } catch (Exception ignore) {
+            }
+        }
+        return (found == 2) ? tmp : null;
+    }
+
+    private boolean isValidNorm(double value) {
+        return Double.isFinite(value) && value >= 0.0 && value <= 1.0;
+    }
+
+    private boolean isXName(String name) {
+        String normalized = name.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("surfacex") || normalized.equals("norm_pos_x");
+    }
+
+    private boolean isYName(String name) {
+        String normalized = name.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("surfacey") || normalized.equals("norm_pos_y");
+    }
+
+    private boolean isTimeName(String name) {
+        String normalized = name.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("devicetimestamp") || normalized.equals("localtimestamp") ||
+                normalized.equals("timestamp") || normalized.equals("time") || normalized.equals("t") ||
+                normalized.equals("start_timestamp") || normalized.contains("timestamp");
+    }
+
+    private double parse(String s) {
+        String trimmed = s.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("empty");
+        }
+        return Double.parseDouble(trimmed);
+    }
+
+    private String[] splitCsv(String line) {
         List<String> fields = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
         boolean inQuotes = false;
@@ -169,18 +291,47 @@ public final class CsvOverlayLoader {
                 } else {
                     sb.append(c);
                 }
+            } else if (c == ',') {
+                fields.add(sb.toString());
+                sb.setLength(0);
+            } else if (c == '"') {
+                inQuotes = true;
             } else {
-                if (c == ',') {
-                    fields.add(sb.toString());
-                    sb.setLength(0);
-                } else if (c == '"') {
-                    inQuotes = true;
-                } else {
-                    sb.append(c);
-                }
+                sb.append(c);
             }
         }
         fields.add(sb.toString());
         return fields.toArray(new String[0]);
+    }
+
+    private record OverlayColumns(int xIdx, int yIdx, int timeIdx) {
+        boolean hasTime() {
+            return timeIdx >= 0;
+        }
+    }
+
+    private record FrameColumns(int frameIdx, int timeIdx, int durationIdx) {
+        boolean valid() {
+            return frameIdx >= 0 && timeIdx >= 0;
+        }
+
+        boolean inBounds(int length) {
+            return frameIdx >= 0 && timeIdx >= 0 && frameIdx < length && timeIdx < length;
+        }
+
+        long durationAdjustment(String[] parts) {
+            if (durationIdx >= 0 && durationIdx < parts.length) {
+                try {
+                    double dur = Double.parseDouble(parts[durationIdx].trim());
+                    if (dur > 1000) {
+                        dur /= 1000.0;
+                    }
+                    return Math.round((dur * 1000.0) / 2.0);
+                } catch (Exception ignore) {
+                    return 0L;
+                }
+            }
+            return 0L;
+        }
     }
 }

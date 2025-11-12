@@ -1,5 +1,11 @@
 package videoapp.util;
 
+import org.opencv.core.Mat;
+import org.opencv.imgproc.Imgproc;
+
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
+
 /**
  * Utilities to convert OpenCV Mat frames into
  * Java BufferedImages instances, handling common
@@ -8,12 +14,6 @@ package videoapp.util;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import org.opencv.core.Mat;
-import org.opencv.imgproc.Imgproc;
-
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 
 public final class FrameConverter {
     private FrameConverter(){}

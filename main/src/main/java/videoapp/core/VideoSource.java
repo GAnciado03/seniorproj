@@ -1,5 +1,9 @@
 package videoapp.core;
 
+import org.opencv.core.Mat;
+import org.opencv.videoio.VideoCapture;
+import org.opencv.videoio.Videoio;
+
 /**
  * Thin wrapper around OpenCV VideoCapture providing open/close,
  * frame retrieval, timing and dimension queries, and millisecond seeking.
@@ -7,10 +11,6 @@ package videoapp.core;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import org.opencv.core.Mat;
-import org.opencv.videoio.VideoCapture;
-import org.opencv.videoio.Videoio;
 
 public class VideoSource {
     private VideoCapture capture;

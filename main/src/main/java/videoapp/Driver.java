@@ -1,23 +1,37 @@
 package videoapp;
 
+import nu.pattern.OpenCV;
+import videoapp.core.VideoPlayer;
+import videoapp.ui.FullscreenManager;
+import videoapp.ui.VideoPanelRenderer;
+import videoapp.ui.VideoPlayerFrame;
+import videoapp.util.CsvOverlayLoader;
+
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+
 /**
  * Application entry point that initializes OpenCV, applies the system
  * look and feel, and displays the main video player window.
  *
  * @author Glenn Anciado
- * @version 1.0
+ * @version 2.0
  */
 
-import videoapp.ui.VideoPlayerFrame;
-import nu.pattern.OpenCV;
+public final class Driver {
+    private Driver() {}
 
-import javax.swing.*;
-
-public class Driver{
-    public static void main(String[] args) throws Exception{
+    public static void main(String[] args) throws Exception {
         OpenCV.loadLocally();
         UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        SwingUtilities.invokeLater(() -> createFrame().setVisible(true));
+    }
 
-        SwingUtilities.invokeLater(() -> new VideoPlayerFrame().setVisible(true));
+    private static VideoPlayerFrame createFrame() {
+        VideoPanelRenderer panel = new VideoPanelRenderer();
+        VideoPlayer player = new VideoPlayer(panel);
+        FullscreenManager fullscreenManager = new FullscreenManager();
+        CsvOverlayLoader overlayLoader = new CsvOverlayLoader();
+        return new VideoPlayerFrame(panel, player, fullscreenManager, overlayLoader);
     }
 }

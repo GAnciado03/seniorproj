@@ -11,6 +11,7 @@ import java.awt.geom.RoundRectangle2D;
  * @author Glenn Anciado
  * @version 1.0
  */
+
 public class PlayPauseIcon implements Icon {
     public enum Type { PLAY, PAUSE }
 

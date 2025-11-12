@@ -1,5 +1,7 @@
 package videoapp.core;
 
+import java.awt.image.BufferedImage;
+
 /**
  * Abstraction for rendering video frames and UI messages. Implementations
  * decide how to display frames and react to lifecycle and progress events.
@@ -7,8 +9,6 @@ package videoapp.core;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import java.awt.image.BufferedImage;
 
 public interface VideoRenderer {
     void renderFrame(BufferedImage frame);

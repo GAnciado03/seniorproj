@@ -1,5 +1,14 @@
 package videoapp.core;
 
+import videoapp.util.FrameConverter;
+
+import org.opencv.core.Mat;
+
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import static java.lang.System.nanoTime;
+
 /**
  * Worker thread that pulls frames from a VideoSource, converts them
  * to BufferedImage, renders via VideoRenderer,
@@ -9,13 +18,6 @@ package videoapp.core;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import videoapp.util.FrameConverter;
-
-import org.opencv.core.Mat;
-
-import java.awt.image.BufferedImage;
-import static java.lang.System.nanoTime;
 
 public class PlaybackThread extends Thread{
     private final VideoSource source;
@@ -101,7 +103,7 @@ public class PlaybackThread extends Thread{
                 if(!source.grab() || !source.retrieve(frame) || frame.empty()) break;
 
                 BufferedImage img = FrameConverter.matToBufferedImage(frame);
-                renderer.renderFrame(img);
+                renderer.renderFrame(applyTargetResolution(img));
 
                 long pos = source.positionMs();
                 if(progressListener != null) progressListener.onProgress(pos, duration);
@@ -126,5 +128,24 @@ public class PlaybackThread extends Thread{
             source.close();
             renderer.onStopped();
         }
+    }
+
+    private BufferedImage applyTargetResolution(BufferedImage img) {
+        int targetW = config.targetWidth;
+        int targetH = config.targetHeight;
+        if (targetW <= 0 || targetH <= 0 ||
+                (img.getWidth() == targetW && img.getHeight() == targetH)) {
+            return img;
+        }
+        BufferedImage scaled = new BufferedImage(targetW, targetH,
+                (img.getType() == BufferedImage.TYPE_CUSTOM) ? BufferedImage.TYPE_3BYTE_BGR : img.getType());
+        Graphics2D g2 = scaled.createGraphics();
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.drawImage(img, 0, 0, targetW, targetH, null);
+        } finally {
+            g2.dispose();
+        }
+        return scaled;
     }
 }

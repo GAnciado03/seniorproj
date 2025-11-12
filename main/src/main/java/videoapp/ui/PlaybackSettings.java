@@ -1,5 +1,8 @@
 package videoapp.ui;
 
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
+
 /**
  * Singleton for globally accessible playback settings such as speed and
  * decode percentage, with listener notifications on change.
@@ -7,9 +10,6 @@ package videoapp.ui;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.BiConsumer;
 
 public class PlaybackSettings {
     private static final PlaybackSettings INSTANCE = new PlaybackSettings();

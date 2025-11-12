@@ -1,5 +1,11 @@
 package videoapp.ui;
 
+import videoapp.core.VideoPlayer;
+
+import javax.swing.*;
+import java.io.File;
+import static videoapp.util.ChooserUtils.*;
+
 /**
  * Helper to open a file chooser dialog and instruct the
  * VideoPlayer to play the selected file.
@@ -7,12 +13,6 @@ package videoapp.ui;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import videoapp.core.VideoPlayer;
-
-import javax.swing.*;
-import java.io.File;
-import static java.lang.System.getProperty;
 
 public class VideoChooseHandler {
     private final JFrame parentFrame;
@@ -26,25 +26,12 @@ public class VideoChooseHandler {
     public void chooseToPlay() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Choose a video file.");
-        File videos = new File(
-            new File(
-                new File(
-                    new File(
-                        new File(getProperty("user.home"), "OneDrive"),
-                        "Documents"
-                    ),
-                    "GitHub"
-                ),
-                "seniorproj"
-            ),
-            "jgs-testing-data"
-        );
-        if(videos.isDirectory()) {
-            chooser.setCurrentDirectory(videos);
-        }
+        File startDir = initialVideoDir();
+        if (startDir != null) chooser.setCurrentDirectory(startDir);
         int result = chooser.showOpenDialog(parentFrame);
         if(result == JFileChooser.APPROVE_OPTION){
             File file = chooser.getSelectedFile();
+            rememberVideoSelection(file);
             player.play(file.getAbsolutePath());
         }
     }

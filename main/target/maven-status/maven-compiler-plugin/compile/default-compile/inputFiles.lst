@@ -7,7 +7,9 @@ D:\GitHub\seniorproj\main\src\main\java\videoapp\core\VideoPlayer.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\core\VideoRenderer.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\core\VideoSource.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\Driver.java
+D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\FullscreenIcon.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\FullscreenManager.java
+D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\GearIcon.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\OverlayPoint.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\PlaybackSettings.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\PlayPauseIcon.java
@@ -18,7 +20,11 @@ D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\TimedOverlayPoint.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\VideoChooseHandler.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\VideoPanelRenderer.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\ui\VideoPlayerFrame.java
+D:\GitHub\seniorproj\main\src\main\java\videoapp\util\AppPrefs.java
+D:\GitHub\seniorproj\main\src\main\java\videoapp\util\ChooserUtils.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\util\CsvOverlayLoader.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\util\FrameConverter.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\util\OpenCvHelpers.java
+D:\GitHub\seniorproj\main\src\main\java\videoapp\util\OverlayOffsetStore.java
+D:\GitHub\seniorproj\main\src\main\java\videoapp\util\ProjectPaths.java
 D:\GitHub\seniorproj\main\src\main\java\videoapp\util\SrtParser.java

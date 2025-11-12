@@ -3,7 +3,7 @@ package videoapp.core;
 /**
  * High-level controller for video playback. Manages opening a source,
  * spawning the playback thread, and providing controls like play, pause,
- * seek, speed, target size, captions, and progress callbacks.
+ * seek, speed, target size, and progress callbacks.
  *
  * @author Glenn Anciado
  * @version 1.0
@@ -78,7 +78,6 @@ public class VideoPlayer {
     public synchronized void setTargetSize(int w, int h) {
         config.targetWidth = Math.max(0, w);
         config.targetHeight = Math.max(0, h);
-        renderer.requestPackOnNextFrame();
     }
 
     public synchronized void seekMs(long ms) {
@@ -102,11 +101,18 @@ public class VideoPlayer {
         return (capture != null) ? capture.positionMs() : 0L;
      }
 
+     public synchronized double fps() {
+        return (capture != null) ? capture.fps() : 0.0;
+     }
+
      public void setProgressListener(ProgressListener l) {
         this.progressListener = l;
      }
 
-     public void setCaptionsEnabled(boolean on) {
-        config.captionsEnabled = on;
+     public synchronized int sourceWidth() {
+        return (capture != null) ? capture.width() : 0;
+     }
+     public synchronized int sourceHeight() {
+        return (capture != null) ? capture.height() : 0;
      }
 }

@@ -1,5 +1,13 @@
 package videoapp.ui;
 
+import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.net.URL;
+import java.util.function.Consumer;
+
 /**
  * Composite control with a play/pause button, a seek slider, and a time label.
  * Uses fixed-size vector icons so toggling doesn't shift layout.
@@ -8,14 +16,6 @@ package videoapp.ui;
  * @author Glenn Anciado
  * @version 1.0
  */
-
-import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.net.URL;
-import java.util.function.Consumer;
 
 public class ProgressBar extends JPanel{
     private final JButton settings = new JButton();

@@ -2,8 +2,6 @@ package videoapp.ui;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.AffineTransform;
-
 /**
  * Simple fullscreen toggle icon. ENTER draws expand corners, EXIT draws collapse corners.
  *
