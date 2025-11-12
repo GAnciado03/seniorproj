@@ -23,16 +23,22 @@ public class VideoChooseHandler {
         this.player = player;
     }
 
-    public void chooseToPlay() {
+    public boolean chooseToPlay() {
+        return chooseToPlay(null);
+    }
+
+    public boolean chooseToPlay(File startDir) {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Choose a video file.");
-        File startDir = initialVideoDir();
-        if (startDir != null) chooser.setCurrentDirectory(startDir);
+        File initial = (startDir != null) ? startDir : initialVideoDir();
+        if (initial != null) chooser.setCurrentDirectory(initial);
         int result = chooser.showOpenDialog(parentFrame);
         if(result == JFileChooser.APPROVE_OPTION){
             File file = chooser.getSelectedFile();
             rememberVideoSelection(file);
             player.play(file.getAbsolutePath());
+            return true;
         }
+        return false;
     }
 }

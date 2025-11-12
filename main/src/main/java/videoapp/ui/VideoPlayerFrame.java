@@ -2,14 +2,17 @@ package videoapp.ui;
 
 import videoapp.core.VideoPlayer;
 import videoapp.ui.VideoPanelRenderer.ScalingMode;
+import videoapp.util.AppPrefs;
 import videoapp.util.ChooserUtils;
 import videoapp.util.CsvOverlayLoader;
 import videoapp.util.OverlayOffsetStore;
 
 import javax.swing.*;
+import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.Insets;
 import java.io.File;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,6 +40,12 @@ public class VideoPlayerFrame extends JFrame{
     private final CsvChooserDelegate csvChooserDelegate;
     private final Function<File, Long> overlayOffsetProvider;
     private final Timer resizeDebounce;
+    private final ProgressBar progressBar;
+    private final JPanel controlsPanel;
+    private final JPanel southPanel;
+    private final JButton loadButton;
+    private ThemePalette currentTheme;
+    private boolean darkModeEnabled;
 
     private int clampEven(int v, int min, int max) {
         int c = Math.max(min, Math.min(max, v));
@@ -91,14 +100,20 @@ public class VideoPlayerFrame extends JFrame{
         this.csvChooserDelegate = (csvChooserDelegate != null) ? csvChooserDelegate : new DefaultCsvChooserDelegate();
         this.overlayOffsetProvider = (overlayOffsetProvider != null) ? overlayOffsetProvider : OverlayOffsetStore::get;
 
-        JButton openBtn = new JButton("Open Video...");
-        JButton importCsvBtn = new JButton("Import CSV...");
-        JPanel controls = buildControlsPanel(openBtn, importCsvBtn);
-        ProgressBar progressBar = new ProgressBar();
-        JPanel south = buildSouthPanel(controls, progressBar);
+        this.loadButton = new JButton("Load CSV & Video...");
+        this.loadButton.setFocusable(false);
+        this.loadButton.setFocusPainted(false);
+        this.loadButton.setMargin(new Insets(6, 14, 6, 14));
+        this.loadButton.setPreferredSize(new Dimension(170, 30));
+        this.loadButton.setOpaque(true);
+        this.loadButton.setContentAreaFilled(true);
+        this.loadButton.setUI(FlatButtonUI.get());
+        this.controlsPanel = buildControlsPanel(this.loadButton);
+        this.progressBar = new ProgressBar();
+        this.southPanel = buildSouthPanel(this.controlsPanel, this.progressBar);
 
         add(this.videoPanel, BorderLayout.CENTER);
-        add(south, BorderLayout.SOUTH);
+        add(this.southPanel, BorderLayout.SOUTH);
 
         FullscreenManager.State[] fsState = new FullscreenManager.State[1];
         AtomicInteger decodePercent = new AtomicInteger(100);
@@ -118,22 +133,24 @@ public class VideoPlayerFrame extends JFrame{
 
         VideoChooseHandler chooserHandler = new VideoChooseHandler(this, this.player);
 
-        wireOpenButton(openBtn, progressBar, fsState, chooserHandler);
-        wireImportButton(importCsvBtn);
-        configureProgressUpdates(progressBar, lastDurationMs);
-        configureProgressInteractions(progressBar, lastDurationMs, decodePercent, lockedW, lockedH, currentSpeed, resizeDebounce, fsState);
+        wireLoadButton(this.loadButton, fsState, chooserHandler);
+        configureProgressUpdates(lastDurationMs);
+        configureProgressInteractions(lastDurationMs, decodePercent, lockedW, lockedH, currentSpeed, resizeDebounce, fsState);
 
         setMinimumSize(new Dimension(600, 400));
         pack();
         setLocationRelativeTo(null);
 
+        this.darkModeEnabled = AppPrefs.get().isDarkMode();
+        applyTheme(ThemePalette.of(this.darkModeEnabled));
+
         this.resizeDebounce.start();
     }
 
-    private JPanel buildControlsPanel(JButton openBtn, JButton importCsvBtn) {
+    private JPanel buildControlsPanel(JButton loadBtn) {
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        controls.add(openBtn);
-        controls.add(importCsvBtn);
+        controls.add(loadBtn);
+        controls.setOpaque(true);
         return controls;
     }
 
@@ -141,6 +158,7 @@ public class VideoPlayerFrame extends JFrame{
         JPanel south = new JPanel(new BorderLayout());
         south.add(controls, BorderLayout.NORTH);
         south.add(progressBar, BorderLayout.SOUTH);
+        south.setOpaque(true);
         return south;
     }
 
@@ -161,22 +179,28 @@ public class VideoPlayerFrame extends JFrame{
         return resizeDebounce;
     }
 
-    private void wireOpenButton(JButton openBtn,
-                                ProgressBar progressBar,
+    private void wireLoadButton(JButton loadBtn,
                                 FullscreenManager.State[] fsState,
                                 VideoChooseHandler chooserHandler) {
-        openBtn.addActionListener(e -> handleOpenVideo(progressBar, fsState, chooserHandler));
+        loadBtn.addActionListener(e -> handleLoadCsvAndVideo(fsState, chooserHandler));
     }
 
-    private void handleOpenVideo(ProgressBar progressBar,
-                                 FullscreenManager.State[] fsState,
-                                 VideoChooseHandler chooserHandler) {
+    private void handleLoadCsvAndVideo(FullscreenManager.State[] fsState,
+                                       VideoChooseHandler chooserHandler) {
+        File csvFile = promptForCsv();
+        if (csvFile == null) {
+            return;
+        }
+        loadOverlayData(csvFile);
+
         boolean wasFullscreen = getGraphicsConfiguration().getDevice().getFullScreenWindow() == this;
         if (wasFullscreen) {
             this.fsMgr.exit(this, fsState[0]);
             fsState[0] = null;
         }
-        chooserHandler.chooseToPlay();
+
+        File startDir = csvFile.getParentFile();
+        chooserHandler.chooseToPlay(startDir);
         startOrRestart(this.resizeDebounce);
 
         this.player.pause();
@@ -184,14 +208,10 @@ public class VideoPlayerFrame extends JFrame{
             fsState[0] = this.fsMgr.enter(this);
         }
 
-        SwingUtilities.invokeLater(() -> progressBar.setPlayState(false));
+        SwingUtilities.invokeLater(() -> this.progressBar.setPlayState(false));
     }
 
-    private void wireImportButton(JButton importCsvBtn) {
-        importCsvBtn.addActionListener(e -> handleCsvImport());
-    }
-
-    private void handleCsvImport() {
+    private File promptForCsv() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Select CSV with surfaceX,surfaceY");
         csvChooserDelegate.configure(chooser);
@@ -203,8 +223,9 @@ public class VideoPlayerFrame extends JFrame{
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File file = chooser.getSelectedFile();
             csvChooserDelegate.rememberSelection(file);
-            loadOverlayData(file);
+            return file;
         }
+        return null;
     }
 
     private void loadOverlayData(File file) {
@@ -243,28 +264,27 @@ public class VideoPlayerFrame extends JFrame{
                 JOptionPane.INFORMATION_MESSAGE);
     }
 
-    private void configureProgressUpdates(ProgressBar progressBar, AtomicLong lastDurationMs) {
+    private void configureProgressUpdates(AtomicLong lastDurationMs) {
         this.player.setProgressListener((pos, dur) -> SwingUtilities.invokeLater(() -> {
             lastDurationMs.set(dur);
-            progressBar.setProgress(pos, dur);
-            progressBar.setPlayState(!this.player.isPaused());
+            this.progressBar.setProgress(pos, dur);
+            this.progressBar.setPlayState(!this.player.isPaused());
         }));
     }
 
-    private void configureProgressInteractions(ProgressBar progressBar,
-                                               AtomicLong lastDurationMs,
+    private void configureProgressInteractions(AtomicLong lastDurationMs,
                                                AtomicInteger decodePercent,
                                                AtomicInteger lockedW,
                                                AtomicInteger lockedH,
                                                AtomicReference<Double> currentSpeed,
                                                Timer resizeDebounce,
                                                FullscreenManager.State[] fsState) {
-        progressBar.setOnPlay(() -> {
+        this.progressBar.setOnPlay(() -> {
             this.player.togglePause();
-            SwingUtilities.invokeLater(() -> progressBar.setPlayState(!this.player.isPaused()));
+            SwingUtilities.invokeLater(() -> this.progressBar.setPlayState(!this.player.isPaused()));
         });
 
-        progressBar.setProgressFraction(pct -> {
+        this.progressBar.setProgressFraction(pct -> {
             long dur = lastDurationMs.get();
             if (dur > 0) {
                 long seek = Math.round(dur * (pct / 1000.0));
@@ -272,13 +292,12 @@ public class VideoPlayerFrame extends JFrame{
             }
         });
 
-        progressBar.setOnSettings(() -> openSettingsMenu(progressBar, currentSpeed, decodePercent, lockedW, lockedH));
-        progressBar.setFullscreen(false);
-        progressBar.setOnToggleFullscreen(() -> toggleFullscreen(fsState, progressBar));
+        this.progressBar.setOnSettings(() -> openSettingsMenu(currentSpeed, decodePercent, lockedW, lockedH));
+        this.progressBar.setFullscreen(false);
+        this.progressBar.setOnToggleFullscreen(() -> toggleFullscreen(fsState, this.progressBar));
     }
 
-    private void openSettingsMenu(ProgressBar progressBar,
-                                  AtomicReference<Double> currentSpeed,
+    private void openSettingsMenu(AtomicReference<Double> currentSpeed,
                                   AtomicInteger decodePercent,
                                   AtomicInteger lockedW,
                                   AtomicInteger lockedH) {
@@ -307,9 +326,11 @@ public class VideoPlayerFrame extends JFrame{
                 effectiveSourceWidth(),
                 effectiveSourceHeight(),
                 currentTarget[0],
-                currentTarget[1]
+                currentTarget[1],
+                this.darkModeEnabled,
+                this::toggleDarkMode
         );
-        progressBar.showSettingsMenu(menu);
+        this.progressBar.showSettingsMenu(menu);
     }
 
     private int[] resolveTargetSize(AtomicInteger lockedW, AtomicInteger lockedH, int decodePercent) {
@@ -319,6 +340,46 @@ public class VideoPlayerFrame extends JFrame{
             return new int[]{lw, lh};
         }
         return computeScaledTarget(decodePercent);
+    }
+
+    private void toggleDarkMode(boolean enabled) {
+        if (this.darkModeEnabled == enabled) {
+            return;
+        }
+        this.darkModeEnabled = enabled;
+        AppPrefs.get().setDarkMode(enabled);
+        applyTheme(ThemePalette.of(enabled));
+    }
+
+    private void applyTheme(ThemePalette palette) {
+        if (palette == null) {
+            return;
+        }
+        this.currentTheme = palette;
+        Color frameBg = palette.windowBackground();
+        setBackground(frameBg);
+        getContentPane().setBackground(frameBg);
+        getRootPane().putClientProperty("JRootPane.titleBarBackground", palette.windowBackground());
+        getRootPane().putClientProperty("JRootPane.titleBarForeground", palette.textColor());
+        this.controlsPanel.setBackground(palette.panelBackground());
+        this.southPanel.setBackground(palette.panelBackground());
+        this.progressBar.applyTheme(palette);
+        this.videoPanel.setSurfaceBackground(palette.videoBackground());
+
+        if (this.loadButton != null) {
+            styleButton(this.loadButton, frameBg, palette.controlForeground(), palette.borderColor());
+        }
+    }
+
+    private void styleButton(AbstractButton button, Color bg, Color fg, Color border) {
+        if (button == null) return;
+        button.setBackground(bg);
+        button.setForeground(fg);
+        button.setBorder(new LineBorder(border, 1, false));
+        button.setOpaque(false);
+        button.setContentAreaFilled(false);
+        button.setFocusPainted(false);
+        button.setUI(FlatButtonUI.get());
     }
 
     private int effectiveSourceWidth() {

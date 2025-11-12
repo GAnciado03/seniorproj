@@ -15,6 +15,7 @@ public final class AppPrefs {
     public static final class Keys {
         public static final String LAST_VIDEO_DIR = "lastVideoDir";
         public static final String LAST_CSV_DIR   = "lastCsvDir";
+        public static final String DARK_MODE      = "darkMode";
         private Keys() {}
     }
 
@@ -44,5 +45,18 @@ public final class AppPrefs {
             }
         } catch (Exception ignore) { }
     }
-}
 
+    public boolean isDarkMode() {
+        try {
+            return prefs.getBoolean(Keys.DARK_MODE, false);
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    public void setDarkMode(boolean enabled) {
+        try {
+            prefs.putBoolean(Keys.DARK_MODE, enabled);
+        } catch (Exception ignore) { }
+    }
+}

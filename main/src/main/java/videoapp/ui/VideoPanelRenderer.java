@@ -38,6 +38,13 @@ public class VideoPanelRenderer extends JPanel implements VideoRenderer {
         repaint();
     }
 
+    public void setSurfaceBackground(Color color) {
+        if (color != null) {
+            setBackground(color);
+            repaint();
+        }
+    }
+
     public ScalingMode getMode() {
         return mode;
     }

@@ -1,10 +1,12 @@
 package videoapp.ui;
 
 import javax.swing.*;
+import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+
 import java.net.URL;
 import java.util.function.Consumer;
 
@@ -14,7 +16,7 @@ import java.util.function.Consumer;
  * Provides hooks for external play/pause action and seeking by fraction.
  *
  * @author Glenn Anciado
- * @version 1.0
+ * @version 2.0
  */
 
 public class ProgressBar extends JPanel{
@@ -23,55 +25,55 @@ public class ProgressBar extends JPanel{
     private final JButton play = new JButton();
     private final JSlider progress = new JSlider(0, 1000, 0);
     private final JLabel time = new JLabel("00:00 / 00:00");
+    private final JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
+    private final JPanel centerPanel = new JPanel(new BorderLayout(8, 0));
+    private final JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
     private boolean dragging = false;
+    private boolean playing = false;
+    private boolean fullscreenOn = false;
+    private ThemePalette theme = ThemePalette.LIGHT;
 
     private Runnable onPlay;
     private Runnable onSettings;
     private Runnable onToggleFullscreen;
     private Consumer<Integer> progressFraction;
 
-    private final Icon playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY, Color.BLACK);
-    private final Icon pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE, Color.BLACK);
-    private final Icon settingsIcon = iconOrFallback("/icons/settings.png", 18, 18,
-            new GearIcon(18, 18, new Color(80, 80, 80)));
-    private final Icon fsEnterIcon = iconOrFallback("/icons/fullscreen.png", 18, 18,
-            new FullscreenIcon(18, 18, FullscreenIcon.Mode.ENTER, new Color(80, 80, 80)));
-    private final Icon fsExitIcon = iconOrFallback("/icons/minimize.png", 18, 18,
-            new FullscreenIcon(18, 18, FullscreenIcon.Mode.EXIT, new Color(80, 80, 80)));
+    private Icon playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY, Color.BLACK);
+    private Icon pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE, Color.BLACK);
+    private Icon settingsIcon = new GearIcon(18, 18, new Color(80, 80, 80));
+    private Icon fsEnterIcon = new FullscreenIcon(18, 18, FullscreenIcon.Mode.ENTER, new Color(80, 80, 80));
+    private Icon fsExitIcon = new FullscreenIcon(18, 18, FullscreenIcon.Mode.EXIT, new Color(80, 80, 80));
 
     public ProgressBar() {
         super(new BorderLayout(12, 0));
 
-        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
         play.setFocusable(false);
         play.setMargin(new Insets(4, 8, 4, 8));
         play.setText(null);
         play.setIcon(playIcon);
         play.setPreferredSize(new Dimension(36, 28));
-        left.add(play);
+        leftPanel.add(play);
 
-        JPanel center = new JPanel(new BorderLayout(8, 0));
-        center.add(progress, BorderLayout.CENTER);
+        centerPanel.add(progress, BorderLayout.CENTER);
 
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
-        right.add(time);
+        rightPanel.add(time);
 
         settings.setFocusable(false);
         settings.setMargin(new Insets(4, 6, 4, 6));
         settings.setText(null);
         settings.setIcon(settingsIcon);
         settings.setPreferredSize(new Dimension(32, 28));
-        right.add(settings);
+        rightPanel.add(settings);
 
         fullscreen.setFocusable(false);
         fullscreen.setMargin(new Insets(4, 6, 4, 6));
         fullscreen.setText(null);
         fullscreen.setIcon(fsEnterIcon);
         fullscreen.setPreferredSize(new Dimension(32, 28));
-        right.add(fullscreen);
-        add(left, BorderLayout.WEST);
-        add(center, BorderLayout.CENTER);
-        add(right, BorderLayout.EAST);
+        rightPanel.add(fullscreen);
+        add(leftPanel, BorderLayout.WEST);
+        add(centerPanel, BorderLayout.CENTER);
+        add(rightPanel, BorderLayout.EAST);
 
         progress.addChangeListener((ChangeEvent e) -> {
             if(progress.getValueIsAdjusting()) {
@@ -117,23 +119,81 @@ public class ProgressBar extends JPanel{
                 updateSliderFromMouse(e);
             }
         });
-
+        applyTheme(theme);
     }
 
-    private static Icon iconOrFallback(String resourcePath, int w, int h, Icon fallback) {
+    public void applyTheme(ThemePalette palette) {
+        if (palette == null) {
+            return;
+        }
+        this.theme = palette;
+        Color chrome = palette.panelBackground();
+        Color surface = palette.surfaceBackground();
+        Color controlBg = palette.windowBackground();
+        Color controlFg = palette.controlForeground();
+
+        setBackground(chrome);
+        leftPanel.setBackground(chrome);
+        rightPanel.setBackground(chrome);
+        centerPanel.setBackground(chrome);
+        setOpaque(true);
+        leftPanel.setOpaque(true);
+        rightPanel.setOpaque(true);
+        centerPanel.setOpaque(true);
+
+        progress.setBackground(surface);
+        progress.setForeground(palette.accentColor());
+        progress.setBorder(new LineBorder(palette.borderColor()));
+        progress.setOpaque(true);
+
+        time.setForeground(palette.textColor());
+
+        JButton[] buttons = {play, settings, fullscreen};
+        for (JButton button : buttons) {
+            button.setBackground(controlBg);
+            button.setForeground(controlFg);
+            button.setBorder(new LineBorder(palette.borderColor(), 1, false));
+            button.setOpaque(false);
+            button.setContentAreaFilled(false);
+            button.setFocusPainted(false);
+            button.setUI(FlatButtonUI.get());
+        }
+
+        rebuildIcons(palette);
+        setPlayState(this.playing);
+        setFullscreen(this.fullscreenOn);
+    }
+
+    private void rebuildIcons(ThemePalette palette) {
+        Color iconColor = (palette.iconColor() != null) ? palette.iconColor() : Color.BLACK;
+        boolean dark = palette.isDark();
+        this.playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY, iconColor);
+        this.pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE, iconColor);
+        this.settingsIcon = loadIcon(
+                dark ? "/settings_darkmode.png" : "/settings.png",
+                18, 18,
+                new GearIcon(18, 18, iconColor));
+        this.fsEnterIcon = loadIcon(
+                dark ? "/fullscreen_darkmode.png" : "/fullscreen.png",
+                18, 18,
+                new FullscreenIcon(18, 18, FullscreenIcon.Mode.ENTER, iconColor));
+        this.fsExitIcon = loadIcon(
+                dark ? "/minimize_darkmode.png" : "/minimize.png",
+                18, 18,
+                new FullscreenIcon(18, 18, FullscreenIcon.Mode.EXIT, iconColor));
+        settings.setIcon(settingsIcon);
+        fullscreen.setIcon(fullscreenOn ? fsExitIcon : fsEnterIcon);
+    }
+
+    private Icon loadIcon(String resourcePath, int width, int height, Icon fallback) {
         try {
             URL url = ProgressBar.class.getResource(resourcePath);
-            if (url == null) {
-                int slash = resourcePath.lastIndexOf('/');
-                String base = slash >= 0 ? resourcePath.substring(slash + 1) : resourcePath;
-                url = ProgressBar.class.getResource("/" + base);
-            }
             if (url != null) {
-                ImageIcon ii = new ImageIcon(url);
-                Image scaled = ii.getImage().getScaledInstance(Math.max(8, w), Math.max(8, h), Image.SCALE_SMOOTH);
+                ImageIcon icon = new ImageIcon(url);
+                Image scaled = icon.getImage().getScaledInstance(Math.max(8, width), Math.max(8, height), Image.SCALE_SMOOTH);
                 return new ImageIcon(scaled);
             }
-        } catch (Throwable ignored) { }
+        } catch (Exception ignore) { }
         return fallback;
     }
 
@@ -176,12 +236,14 @@ public class ProgressBar extends JPanel{
     }
 
     public void setPlayState(boolean p) {
+        this.playing = p;
         play.setIcon(p ? pauseIcon : playIcon);
     }
 
     public void setOnSettings(Runnable r) { this.onSettings = r; }
     public void setOnToggleFullscreen(Runnable r) { this.onToggleFullscreen = r; }
     public void setFullscreen(boolean fullscreenOn) {
+        this.fullscreenOn = fullscreenOn;
         fullscreen.setIcon(fullscreenOn ? fsExitIcon : fsEnterIcon);
     }
 

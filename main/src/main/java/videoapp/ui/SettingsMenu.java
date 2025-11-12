@@ -19,7 +19,9 @@ public class SettingsMenu extends JPopupMenu{
                         DoubleConsumer onSpeed, IntConsumer onPercent,
                         java.util.function.BiConsumer<Integer, Integer> onResolution,
                         int sourceWidthPx, int sourceHeightPx,
-                        int videoWidthPx, int videoHeightPx) {
+                        int videoWidthPx, int videoHeightPx,
+                        boolean darkModeEnabled,
+                        Consumer<Boolean> onDarkModeToggle) {
 
         JMenu speed = new JMenu("Playback speed");
         ButtonGroup speedGroup = new ButtonGroup();
@@ -35,6 +37,15 @@ public class SettingsMenu extends JPopupMenu{
         current.setEnabled(false);
         res.add(current);
         add(res);
+
+        addSeparator();
+        JCheckBoxMenuItem darkMode = new JCheckBoxMenuItem("Dark mode", darkModeEnabled);
+        darkMode.addActionListener(e -> {
+            if (onDarkModeToggle != null) {
+                onDarkModeToggle.accept(darkMode.isSelected());
+            }
+        });
+        add(darkMode);
     }
 
     private JMenuItem item(String label, Runnable action, Runnable after) {
