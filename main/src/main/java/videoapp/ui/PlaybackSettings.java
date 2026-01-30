@@ -39,12 +39,6 @@ public class PlaybackSettings {
         notifyListeners();
     }
 
-    private void onChange(BiConsumer<Double, Integer> l) {
-        if (l != null) {
-            listeners.add(l);
-        }
-    }
-
     private void notifyListeners() {
         for(var l : listeners) {
             l.accept(speed, decodePercent);

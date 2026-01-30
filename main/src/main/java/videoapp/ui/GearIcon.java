@@ -10,7 +10,7 @@ import java.awt.AlphaComposite;
  * Simple vector gear icon for settings.
  *
  * @author Glenn Anciado
- * @version 1.2
+ * @version 2.0
  */
 
 public class GearIcon implements Icon {

@@ -2,19 +2,17 @@ package videoapp.ui;
 
 import videoapp.core.VideoPlayer;
 import videoapp.ui.VideoPanelRenderer.ScalingMode;
-import videoapp.util.AppPrefs;
-import videoapp.util.ChooserUtils;
 import videoapp.util.CsvOverlayLoader;
 import videoapp.util.OverlayOffsetStore;
 
 import javax.swing.*;
-import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.Insets;
 import java.io.File;
-import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,6 +25,7 @@ import java.util.function.Function;
  * @author Glenn Anciado
  * @version 2.0
  */
+
 public class VideoPlayerFrame extends JFrame{
     private static final int MIN_W = 160;
     private static final int MAX_W = 3840;
@@ -36,16 +35,17 @@ public class VideoPlayerFrame extends JFrame{
     private final VideoPanelRenderer videoPanel;
     private final VideoPlayer player;
     private final FullscreenManager fsMgr;
-    private final CsvOverlayLoader overlayLoader;
     private final CsvChooserDelegate csvChooserDelegate;
     private final Function<File, Long> overlayOffsetProvider;
+    private final CsvOverlayImporter csvImporter;
     private final Timer resizeDebounce;
     private final ProgressBar progressBar;
     private final JPanel controlsPanel;
     private final JPanel southPanel;
     private final JButton loadButton;
-    private ThemePalette currentTheme;
-    private boolean darkModeEnabled;
+    private final ThemeController themeController;
+    private final Dimension defaultWindowSize;
+    private final ExecutorService overlayLoaderExecutor;
 
     private int clampEven(int v, int min, int max) {
         int c = Math.max(min, Math.min(max, v));
@@ -96,7 +96,7 @@ public class VideoPlayerFrame extends JFrame{
         this.videoPanel.setMode(ScalingMode.FIT);
         this.player = (player != null) ? player : new VideoPlayer(this.videoPanel);
         this.fsMgr = (fsMgr != null) ? fsMgr : new FullscreenManager();
-        this.overlayLoader = (overlayLoader != null) ? overlayLoader : new CsvOverlayLoader();
+        CsvOverlayLoader effectiveOverlayLoader = (overlayLoader != null) ? overlayLoader : new CsvOverlayLoader();
         this.csvChooserDelegate = (csvChooserDelegate != null) ? csvChooserDelegate : new DefaultCsvChooserDelegate();
         this.overlayOffsetProvider = (overlayOffsetProvider != null) ? overlayOffsetProvider : OverlayOffsetStore::get;
 
@@ -111,9 +111,31 @@ public class VideoPlayerFrame extends JFrame{
         this.controlsPanel = buildControlsPanel(this.loadButton);
         this.progressBar = new ProgressBar();
         this.southPanel = buildSouthPanel(this.controlsPanel, this.progressBar);
+        this.csvImporter = new CsvOverlayImporter(
+                this,
+                this.videoPanel,
+                this.player,
+                effectiveOverlayLoader,
+                this.overlayOffsetProvider,
+                this.csvChooserDelegate
+        );
+        this.themeController = new ThemeController(
+                this,
+                this.videoPanel,
+                this.progressBar,
+                this.controlsPanel,
+                this.southPanel,
+                this.loadButton
+        );
 
         add(this.videoPanel, BorderLayout.CENTER);
         add(this.southPanel, BorderLayout.SOUTH);
+
+        this.overlayLoaderExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "overlay-loader");
+            t.setDaemon(true);
+            return t;
+        });
 
         FullscreenManager.State[] fsState = new FullscreenManager.State[1];
         AtomicInteger decodePercent = new AtomicInteger(100);
@@ -131,6 +153,16 @@ public class VideoPlayerFrame extends JFrame{
             }
         });
 
+        this.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                if (fsState[0] != null && !isMaximized()) {
+                    fsState[0] = null;
+                    progressBar.setFullscreen(false);
+                }
+            }
+        });
+
         VideoChooseHandler chooserHandler = new VideoChooseHandler(this, this.player);
 
         wireLoadButton(this.loadButton, fsState, chooserHandler);
@@ -139,12 +171,18 @@ public class VideoPlayerFrame extends JFrame{
 
         setMinimumSize(new Dimension(600, 400));
         pack();
+        this.defaultWindowSize = new Dimension(getSize());
         setLocationRelativeTo(null);
 
-        this.darkModeEnabled = AppPrefs.get().isDarkMode();
-        applyTheme(ThemePalette.of(this.darkModeEnabled));
+        this.themeController.applyStoredPreference();
 
         this.resizeDebounce.start();
+    }
+
+    @Override
+    public void dispose() {
+        this.overlayLoaderExecutor.shutdownNow();
+        super.dispose();
     }
 
     private JPanel buildControlsPanel(JButton loadBtn) {
@@ -187,16 +225,40 @@ public class VideoPlayerFrame extends JFrame{
 
     private void handleLoadCsvAndVideo(FullscreenManager.State[] fsState,
                                        VideoChooseHandler chooserHandler) {
-        File csvFile = promptForCsv();
+        File csvFile = this.csvImporter.chooseCsvFile();
         if (csvFile == null) {
             return;
         }
-        loadOverlayData(csvFile);
+        SwingUtilities.invokeLater(this.videoPanel::hideHeatmapOverlay);
+        this.videoPanel.showLoadingIndicator();
+        this.overlayLoaderExecutor.submit(() -> {
+            try {
+                OverlayPayload payload = this.csvImporter.loadOverlayPayload(
+                        csvFile,
+                        this.videoPanel.heatmapRows(),
+                        this.videoPanel.heatmapCols()
+                );
+                SwingUtilities.invokeLater(() -> {
+                    this.csvImporter.applyOverlayPayload(payload);
+                    this.videoPanel.hideLoadingIndicator();
+                    this.videoPanel.hideHeatmapOverlay();
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    this.videoPanel.hideLoadingIndicator();
+                    JOptionPane.showMessageDialog(this,
+                            "Failed to import CSV: " + ex.getMessage(),
+                            "CSV Import Error",
+                            JOptionPane.ERROR_MESSAGE);
+                });
+            }
+        });
 
-        boolean wasFullscreen = getGraphicsConfiguration().getDevice().getFullScreenWindow() == this;
+        boolean wasFullscreen = fsState[0] != null;
         if (wasFullscreen) {
             this.fsMgr.exit(this, fsState[0]);
             fsState[0] = null;
+            restoreDefaultSize();
         }
 
         File startDir = csvFile.getParentFile();
@@ -209,59 +271,6 @@ public class VideoPlayerFrame extends JFrame{
         }
 
         SwingUtilities.invokeLater(() -> this.progressBar.setPlayState(false));
-    }
-
-    private File promptForCsv() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Select CSV with surfaceX,surfaceY");
-        csvChooserDelegate.configure(chooser);
-        File start = csvChooserDelegate.initialDirectory();
-        if (start != null) {
-            chooser.setCurrentDirectory(start);
-        }
-
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = chooser.getSelectedFile();
-            csvChooserDelegate.rememberSelection(file);
-            return file;
-        }
-        return null;
-    }
-
-    private void loadOverlayData(File file) {
-        List<TimedOverlayPoint> timedPoints = overlayLoader.loadTimed(file);
-        if (!timedPoints.isEmpty()) {
-            applyTimedOverlay(file, timedPoints);
-            return;
-        }
-        List<OverlayPoint> points = overlayLoader.load(file);
-        applyStaticOverlay(file, points);
-    }
-
-    private void applyTimedOverlay(File file, List<TimedOverlayPoint> timedPoints) {
-        this.videoPanel.setTimedOverlayPoints(timedPoints);
-        double fps = this.player.fps();
-        Long saved = overlayOffsetProvider.apply(file);
-        Long autoOffset = overlayLoader.suggestOffsetFromFrameIndex(file, fps);
-        if (saved != null) {
-            this.videoPanel.setOverlayTimeOffsetMs(saved);
-        } else if (autoOffset != null) {
-            this.videoPanel.setOverlayTimeOffsetMs(autoOffset);
-        } else {
-            this.videoPanel.setTimedOverlayAnchorIndex(1);
-        }
-        JOptionPane.showMessageDialog(this,
-                String.format("Loaded %d time-synced points from %s", timedPoints.size(), file.getName()),
-                "CSV Imported",
-                JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    private void applyStaticOverlay(File file, List<OverlayPoint> points) {
-        this.videoPanel.setOverlayPoints(points);
-        JOptionPane.showMessageDialog(this,
-                String.format("Loaded %d points from %s (no time column)", points.size(), file.getName()),
-                "CSV Imported",
-                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void configureProgressUpdates(AtomicLong lastDurationMs) {
@@ -281,16 +290,34 @@ public class VideoPlayerFrame extends JFrame{
                                                FullscreenManager.State[] fsState) {
         this.progressBar.setOnPlay(() -> {
             this.player.togglePause();
-            SwingUtilities.invokeLater(() -> this.progressBar.setPlayState(!this.player.isPaused()));
+            boolean playingNow = !this.player.isPaused();
+            SwingUtilities.invokeLater(() -> {
+                this.progressBar.setPlayState(playingNow);
+                if (playingNow) {
+                    this.videoPanel.hideHeatmapOverlay();
+                }
+            });
         });
 
+        AtomicReference<Long> pendingSeekMs = new AtomicReference<>(-1L);
         this.progressBar.setProgressFraction(pct -> {
             long dur = lastDurationMs.get();
-            if (dur > 0) {
-                long seek = Math.round(dur * (pct / 1000.0));
-                this.player.seekMs(seek);
+            if (dur <= 0) {
+                return;
             }
+            long seek = Math.round(dur * (pct / 1000.0));
+            pendingSeekMs.set(Math.max(0, Math.min(seek, dur)));
         });
+
+        this.progressBar.setOnSeekStart(this.videoPanel::requestSeekLoadingIndicator);
+        this.progressBar.setOnSeekEnd(() -> SwingUtilities.invokeLater(() -> {
+            this.videoPanel.requestSeekLoadingIndicator();
+            long dur = lastDurationMs.get();
+            long target = pendingSeekMs.getAndSet(-1L);
+            if (dur > 0 && target >= 0) {
+                this.player.seekMs(Math.max(0, Math.min(target, dur)));
+            }
+        }));
 
         this.progressBar.setOnSettings(() -> openSettingsMenu(currentSpeed, decodePercent, lockedW, lockedH));
         this.progressBar.setFullscreen(false);
@@ -327,8 +354,8 @@ public class VideoPlayerFrame extends JFrame{
                 effectiveSourceHeight(),
                 currentTarget[0],
                 currentTarget[1],
-                this.darkModeEnabled,
-                this::toggleDarkMode
+                this.themeController.isDarkModeEnabled(),
+                this.themeController::setDarkMode
         );
         this.progressBar.showSettingsMenu(menu);
     }
@@ -342,46 +369,6 @@ public class VideoPlayerFrame extends JFrame{
         return computeScaledTarget(decodePercent);
     }
 
-    private void toggleDarkMode(boolean enabled) {
-        if (this.darkModeEnabled == enabled) {
-            return;
-        }
-        this.darkModeEnabled = enabled;
-        AppPrefs.get().setDarkMode(enabled);
-        applyTheme(ThemePalette.of(enabled));
-    }
-
-    private void applyTheme(ThemePalette palette) {
-        if (palette == null) {
-            return;
-        }
-        this.currentTheme = palette;
-        Color frameBg = palette.windowBackground();
-        setBackground(frameBg);
-        getContentPane().setBackground(frameBg);
-        getRootPane().putClientProperty("JRootPane.titleBarBackground", palette.windowBackground());
-        getRootPane().putClientProperty("JRootPane.titleBarForeground", palette.textColor());
-        this.controlsPanel.setBackground(palette.panelBackground());
-        this.southPanel.setBackground(palette.panelBackground());
-        this.progressBar.applyTheme(palette);
-        this.videoPanel.setSurfaceBackground(palette.videoBackground());
-
-        if (this.loadButton != null) {
-            styleButton(this.loadButton, frameBg, palette.controlForeground(), palette.borderColor());
-        }
-    }
-
-    private void styleButton(AbstractButton button, Color bg, Color fg, Color border) {
-        if (button == null) return;
-        button.setBackground(bg);
-        button.setForeground(fg);
-        button.setBorder(new LineBorder(border, 1, false));
-        button.setOpaque(false);
-        button.setContentAreaFilled(false);
-        button.setFocusPainted(false);
-        button.setUI(FlatButtonUI.get());
-    }
-
     private int effectiveSourceWidth() {
         int sw = this.player.sourceWidth();
         return (sw > 0) ? sw : Math.max(1, this.videoPanel.getWidth());
@@ -393,37 +380,31 @@ public class VideoPlayerFrame extends JFrame{
     }
 
     private void toggleFullscreen(FullscreenManager.State[] fsState, ProgressBar progressBar) {
-        boolean isFullscreen = getGraphicsConfiguration().getDevice().getFullScreenWindow() == this;
-        if (isFullscreen) {
+        boolean expanded = fsState[0] != null;
+        if (expanded) {
             this.fsMgr.exit(this, fsState[0]);
             fsState[0] = null;
             progressBar.setFullscreen(false);
-        } else {
-            fsState[0] = this.fsMgr.enter(this);
-            progressBar.setFullscreen(true);
+            restoreDefaultSize();
+            return;
         }
+        fsState[0] = this.fsMgr.enter(this);
+        progressBar.setFullscreen(true);
     }
 
-    private interface CsvChooserDelegate {
-        void configure(JFileChooser chooser);
-        File initialDirectory();
-        void rememberSelection(File file);
+    private void restoreDefaultSize() {
+        if (this.defaultWindowSize == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            setExtendedState(JFrame.NORMAL);
+            setSize(this.defaultWindowSize);
+            revalidate();
+        });
     }
 
-    private static final class DefaultCsvChooserDelegate implements CsvChooserDelegate {
-        @Override
-        public void configure(JFileChooser chooser) {
-            ChooserUtils.applyCsvFilter(chooser);
-        }
-
-        @Override
-        public File initialDirectory() {
-            return ChooserUtils.initialCsvDir();
-        }
-
-        @Override
-        public void rememberSelection(File file) {
-            ChooserUtils.rememberCsvSelection(file);
-        }
+    private boolean isMaximized() {
+        return (getExtendedState() & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH;
     }
+
 }

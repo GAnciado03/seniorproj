@@ -15,6 +15,15 @@ public interface VideoRenderer {
     void showMessage(String message);
     void onStopped();
 
+    /**
+     * Called when playback ends. Implementations can inspect whether the video
+     * reached the end (true) or was stopped manually/early (false). Default
+     * behavior delegates to {@link #onStopped()} for backward compatibility.
+     */
+    default void onPlaybackFinished(boolean completedNaturally) {
+        onStopped();
+    }
+
     default void onProgress(long posMs, long durationMs) {}
     default void requestPackOnNextFrame() {}
 }

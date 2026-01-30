@@ -29,6 +29,7 @@ public class ProgressBar extends JPanel{
     private final JPanel centerPanel = new JPanel(new BorderLayout(8, 0));
     private final JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
     private boolean dragging = false;
+    private boolean scrubbing = false;
     private boolean playing = false;
     private boolean fullscreenOn = false;
     private ThemePalette theme = ThemePalette.LIGHT;
@@ -37,6 +38,8 @@ public class ProgressBar extends JPanel{
     private Runnable onSettings;
     private Runnable onToggleFullscreen;
     private Consumer<Integer> progressFraction;
+    private Runnable onSeekStart;
+    private Runnable onSeekEnd;
 
     private Icon playIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PLAY, Color.BLACK);
     private Icon pauseIcon = new PlayPauseIcon(18, 18, PlayPauseIcon.Type.PAUSE, Color.BLACK);
@@ -77,12 +80,9 @@ public class ProgressBar extends JPanel{
 
         progress.addChangeListener((ChangeEvent e) -> {
             if(progress.getValueIsAdjusting()) {
-                dragging = true;
-            } else if (dragging) {
-                dragging = false;
-                if(progressFraction != null) {
-                    progressFraction.accept(progress.getValue());
-                }
+                beginScrub();
+            } else {
+                endScrub();
             }
         });
 
@@ -102,15 +102,13 @@ public class ProgressBar extends JPanel{
         progress.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                beginScrub();
                 updateSliderFromMouse(e);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                if (progressFraction != null) {
-                    progressFraction.accept(progress.getValue());
-                }
-                dragging = false;
+                endScrub();
             }
         });
         progress.addMouseMotionListener(new MouseAdapter() {
@@ -204,6 +202,33 @@ public class ProgressBar extends JPanel{
         int v = (int) Math.round((x / (double) w) * progress.getMaximum());
         progress.setValue(v);
         dragging = true;
+        if (progressFraction != null) {
+            progressFraction.accept(progress.getValue());
+        }
+    }
+
+    private void beginScrub() {
+        if (!scrubbing) {
+            scrubbing = true;
+            dragging = true;
+            if (onSeekStart != null) {
+                onSeekStart.run();
+            }
+        }
+    }
+
+    private void endScrub() {
+        if (!scrubbing) {
+            return;
+        }
+        scrubbing = false;
+        dragging = false;
+        if (progressFraction != null) {
+            progressFraction.accept(progress.getValue());
+        }
+        if (onSeekEnd != null) {
+            onSeekEnd.run();
+        }
     }
 
     public void setOnPlay(Runnable r) {
@@ -212,6 +237,14 @@ public class ProgressBar extends JPanel{
 
     public void setProgressFraction(Consumer<Integer> c) {
         this.progressFraction = c;
+    }
+
+    public void setOnSeekStart(Runnable r) {
+        this.onSeekStart = r;
+    }
+
+    public void setOnSeekEnd(Runnable r) {
+        this.onSeekEnd = r;
     }
 
     public void setProgress(long posMs, long durMs) {

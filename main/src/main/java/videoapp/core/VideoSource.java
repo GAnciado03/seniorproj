@@ -9,7 +9,7 @@ import org.opencv.videoio.Videoio;
  * frame retrieval, timing and dimension queries, and millisecond seeking.
  *
  * @author Glenn Anciado
- * @version 1.0
+ * @version 2.0
  */
 
 public class VideoSource {
@@ -51,7 +51,19 @@ public class VideoSource {
     }
 
     public boolean seekMs(long ms) {
-        return capture != null && capture.set(Videoio.CAP_PROP_POS_MSEC, ms);
+        if (capture == null) {
+            return false;
+        }
+        double fps = fps();
+        long frames = frameCount();
+        if (fps > 0 && frames > 0) {
+            double targetFrame = (ms / 1000.0) * fps;
+            targetFrame = Math.max(0.0, Math.min(targetFrame, frames - 1));
+            if (capture.set(Videoio.CAP_PROP_POS_FRAMES, targetFrame)) {
+                return true;
+            }
+        }
+        return capture.set(Videoio.CAP_PROP_POS_MSEC, ms);
     }
 
     public int width() {

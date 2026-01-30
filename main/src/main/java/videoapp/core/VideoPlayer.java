@@ -16,6 +16,7 @@ public class VideoPlayer {
     private final VideoRenderer renderer;
     private final PlaybackConfig config = new PlaybackConfig();
     private ProgressListener progressListener;
+    private String currentSourcePath;
 
     public VideoPlayer(VideoRenderer renderer) {
         this.renderer = renderer;
@@ -23,10 +24,12 @@ public class VideoPlayer {
 
     public synchronized boolean play(String path) {
         stop(); paused = false;
+        currentSourcePath = path;
         capture = new VideoSource();
         if(!capture.open(path)) {
             renderer.showMessage("Failed to open: " + path);
             capture = null;
+            currentSourcePath = null;
             return false;
         }
         thread = new PlaybackThread(capture, renderer, config, progressListener);
@@ -50,6 +53,9 @@ public class VideoPlayer {
         }
         renderer.onStopped();
         paused = false;
+        if (thread == null) {
+            currentSourcePath = null;
+        }
     }
 
     public synchronized void pause() {
@@ -65,6 +71,12 @@ public class VideoPlayer {
         }
     }
     public synchronized void togglePause() {
+        if(thread == null || !thread.isAlive()) {
+            if (currentSourcePath != null) {
+                play(currentSourcePath);
+            }
+            return;
+        }
         if(paused) {
             resume();
         } else {

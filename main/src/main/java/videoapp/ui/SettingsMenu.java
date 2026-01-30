@@ -1,7 +1,6 @@
 package videoapp.ui;
 
 import javax.swing.*;
-import java.awt.event.ActionEvent;
 import java.util.function.*;
 
 /**
@@ -48,20 +47,6 @@ public class SettingsMenu extends JPopupMenu{
         add(darkMode);
     }
 
-    private JMenuItem item(String label, Runnable action, Runnable after) {
-        return new JMenuItem(new AbstractAction(label){
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if(action != null) action.run();
-                if(after != null) after.run();
-            }
-        });
-    }
-
-    private JMenuItem item(String label, Runnable action) {
-        return item(label, action, null);
-    }
-
     private String currentResolutionLabel(int w, int h) {
         if (w > 0 && h > 0) {
             return "Current: " + w + "x" + h;
@@ -76,9 +61,5 @@ public class SettingsMenu extends JPopupMenu{
         it.addActionListener(e -> onSpeed.accept(speedValue));
         if (group != null) group.add(it);
         return it;
-    }
-
-    private static int clamp(int v, int min, int max){
-        return Math.max(min, Math.min(max, v));
     }
 }

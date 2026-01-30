@@ -7,6 +7,11 @@ import org.opencv.core.Mat;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import static java.lang.System.nanoTime;
 
 /**
@@ -16,7 +21,7 @@ import static java.lang.System.nanoTime;
  * Renders every grabbed frame (no frame skipping) for smooth playback.
  *
  * @author Glenn Anciado
- * @version 1.0
+ * @version 2.0
  */
 
 public class PlaybackThread extends Thread{
@@ -24,10 +29,19 @@ public class PlaybackThread extends Thread{
     private final VideoRenderer renderer;
     private final PlaybackConfig config;
     private final ProgressListener progressListener;
+    private final ExecutorService frameConvertExecutor = Executors.newFixedThreadPool(
+            2,
+            r -> {
+                Thread t = new Thread(r, "frame-converter");
+                t.setDaemon(true);
+                return t;
+            });
+    private static final int PIPELINE_DEPTH = 3;
 
     private final Object pauseLock = new Object();
 
     private volatile boolean playing = true;
+    private volatile boolean stopRequested = false;
     private volatile boolean paused = false;
 
     private long pendingSeekMs = -1;
@@ -41,6 +55,7 @@ public class PlaybackThread extends Thread{
 
     public void requestStop() {
         playing = false;
+        stopRequested = true;
         interrupt();
         synchronized(pauseLock) {
             pauseLock.notifyAll();
@@ -70,8 +85,17 @@ public class PlaybackThread extends Thread{
         }
     }
 
+    private boolean hasPendingSeek() {
+        synchronized (this) {
+            return pendingSeekMs >= 0;
+        }
+    }
+
     @Override
     public void run() {
+        boolean encounteredError = false;
+        Mat frame = new Mat();
+        Deque<FrameJob> pipeline = new ArrayDeque<>();
         try {
             double fps = source.fps();
             if(fps <= 0 || Double.isNaN(fps)) {
@@ -79,8 +103,6 @@ public class PlaybackThread extends Thread{
             }
             long duration = source.durationMs();
             long nextTickNs = System.nanoTime();
-            Mat frame = new Mat();
-
             while(playing) {
                 synchronized (pauseLock) {
                     while(paused && playing) {
@@ -90,22 +112,48 @@ public class PlaybackThread extends Thread{
                         }
                     }
                 }
-                if(!playing) break;
-
-                long seek = consumePendingSeekMs();
-                if(seek >= 0 ) {
-                    if(duration > 0) {
-                        seek = Math.max(0, Math.min(seek, duration));
-                    }
-                        source.seekMs(seek);
-                        nextTickNs = System.nanoTime();
+                if(!playing) {
+                    break;
                 }
-                if(!source.grab() || !source.retrieve(frame) || frame.empty()) break;
 
-                BufferedImage img = FrameConverter.matToBufferedImage(frame);
+                boolean handledSeek = drainPendingSeek(duration, pipeline);
+                if (handledSeek) {
+                    nextTickNs = System.nanoTime();
+                }
+
+                while (pipeline.size() < PIPELINE_DEPTH && playing && !hasPendingSeek()) {
+                    if(!source.grab()) {
+                        playing = false;
+                        break;
+                    }
+                    if (hasPendingSeek()) {
+                        break;
+                    }
+                    if(!source.retrieve(frame) || frame.empty()) {
+                        playing = false;
+                        break;
+                    }
+                    if (hasPendingSeek()) {
+                        break;
+                    }
+                    long pos = source.positionMs();
+                    Mat matCopy = frame.clone();
+                    Future<BufferedImage> future = frameConvertExecutor.submit(() -> FrameConverter.matToBufferedImage(matCopy));
+                    pipeline.add(new FrameJob(matCopy, future, pos));
+                }
+
+                FrameJob job = pipeline.poll();
+                if (job == null) {
+                    if (!playing) {
+                        break;
+                    }
+                    continue;
+                }
+
+                BufferedImage img = job.awaitImage();
                 renderer.renderFrame(applyTargetResolution(img));
 
-                long pos = source.positionMs();
+                long pos = job.positionMs();
                 if(progressListener != null) progressListener.onProgress(pos, duration);
                 renderer.onProgress(pos, duration);
 
@@ -124,9 +172,44 @@ public class PlaybackThread extends Thread{
                     nextTickNs = nanoTime();
                 }
             }
+        } catch (Exception e) {
+            encounteredError = true;
+            throw e;
         } finally {
+            frame.release();
             source.close();
-            renderer.onStopped();
+            frameConvertExecutor.shutdownNow();
+            clearJobs(pipeline);
+            boolean completedNaturally = !stopRequested && !encounteredError;
+            renderer.onPlaybackFinished(completedNaturally);
+        }
+    }
+
+    private boolean drainPendingSeek(long duration, Deque<FrameJob> pipeline) {
+        boolean handledSeek = false;
+        long seek;
+        while((seek = consumePendingSeekMs()) >= 0) {
+            if(duration > 0) {
+                seek = Math.max(0, Math.min(seek, duration));
+            }
+            source.seekMs(seek);
+            handledSeek = true;
+        }
+        if (handledSeek) {
+            clearJobs(pipeline);
+        }
+        return handledSeek;
+    }
+
+    private void clearJobs(Deque<FrameJob> pipeline) {
+        if (pipeline == null) {
+            return;
+        }
+        while (!pipeline.isEmpty()) {
+            FrameJob job = pipeline.poll();
+            if (job != null) {
+                job.cancel();
+            }
         }
     }
 
@@ -147,5 +230,36 @@ public class PlaybackThread extends Thread{
             g2.dispose();
         }
         return scaled;
+    }
+
+    private static final class FrameJob {
+        private final Mat mat;
+        private final Future<BufferedImage> future;
+        private final long positionMs;
+
+        FrameJob(Mat mat, Future<BufferedImage> future, long positionMs) {
+            this.mat = mat;
+            this.future = future;
+            this.positionMs = positionMs;
+        }
+
+        BufferedImage awaitImage() {
+            try {
+                return future.get();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            } finally {
+                mat.release();
+            }
+        }
+
+        void cancel() {
+            future.cancel(true);
+            mat.release();
+        }
+
+        long positionMs() {
+            return positionMs;
+        }
     }
 }
